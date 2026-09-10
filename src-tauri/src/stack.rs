@@ -130,6 +130,7 @@ impl StackManager {
                     &python,
                     &["stop", "--home", &home.to_string_lossy()],
                     &runtime_dir,
+                    &home,
                 )
                 .await;
             }
@@ -203,11 +204,25 @@ fn python_in(runtime_dir: &Path) -> Option<PathBuf> {
     python.is_file().then_some(python)
 }
 
-async fn run_cli(python: &Path, args: &[&str], runtime_dir: &Path) -> Result<(), String> {
+/// `DEEPTUTOR_HOME` must be set as an environment variable, not only passed
+/// as `--home`: the CLI configures logging at import time, before argument
+/// parsing, and would otherwise derive the workspace from the (possibly
+/// read-only) working directory of a Finder-launched app.
+///
+/// `DEEPTUTOR_HOME` 必须以环境变量形式提供, 不能只传 `--home` 参数:
+/// CLI 在导入期、参数解析之前就会初始化日志, 否则会从 Finder 启动的
+/// 只读工作目录推导 workspace 路径。
+async fn run_cli(
+    python: &Path,
+    args: &[&str],
+    runtime_dir: &Path,
+    home: &Path,
+) -> Result<(), String> {
     let mut command = Command::new(python);
     command
         .args(["-m", "deeptutor"])
         .args(args)
+        .env("DEEPTUTOR_HOME", home)
         .env("PATH", prepend_node_bin(runtime_dir))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -289,6 +304,7 @@ async fn start_stack(app: &AppHandle) -> Result<String, String> {
             &home.to_string_lossy(),
         ],
         &runtime_dir,
+        &home,
     )
     .await?;
 
