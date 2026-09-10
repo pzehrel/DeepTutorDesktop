@@ -35,6 +35,10 @@ Tauri Rust Core（进程生命周期 / 就绪探测 / 窗口导航）
 - [Bridge 协议草案](docs/protocol.md)
 - [Runtime 与 Tauri 打包策略](docs/packaging.md)
 
+## 打包与 CI
+
+`scripts/build-runtime.sh <target>` 支持 `darwin-arm64`、`darwin-x64`（Intel）、`linux-x64`、`win32-x64`,需在与目标架构一致的机器上运行。GitHub Actions（`.github/workflows/build.yml`）以四平台矩阵自动打包并按架构命名产物（如 `..._macos-intel.dmg` 与 `..._macos-apple-silicon.dmg`）;推送 `v*` 标签会自动发布 Release。
+
 ## 开发
 
 ```bash

@@ -36,7 +36,7 @@
     ],
     "createUpdaterArtifacts": false,
     "resources": {
-      "../runtime/darwin-arm64": "runtime/"
+      "../runtime/current": "runtime/"
     }
   }
 }

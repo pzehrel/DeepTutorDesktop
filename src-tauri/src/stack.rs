@@ -233,15 +233,20 @@ pub fn resolve_runtime(app: &AppHandle) -> Option<(PathBuf, PathBuf)> {
 }
 
 fn python_in(runtime_dir: &Path) -> Option<PathBuf> {
-    let python = if cfg!(windows) {
-        runtime_dir
-            .join("python")
-            .join("Scripts")
-            .join("python.exe")
+    // python-build-standalone keeps the interpreter under `bin/` on every
+    // platform (including Windows); `Scripts/` only appears in venv layouts.
+    //
+    // python-build-standalone 在所有平台(含 Windows)都把解释器放在
+    // `bin/` 下; `Scripts/` 只出现在 venv 布局中。
+    let candidates: &[&str] = if cfg!(windows) {
+        &["python/bin/python.exe", "python/Scripts/python.exe"]
     } else {
-        runtime_dir.join("python").join("bin").join("python3")
+        &["python/bin/python3", "python/bin/python3.13"]
     };
-    python.is_file().then_some(python)
+    candidates
+        .iter()
+        .map(|relative| runtime_dir.join(relative))
+        .find(|path| path.is_file())
 }
 
 /// `DEEPTUTOR_HOME` must be set as an environment variable, not only passed

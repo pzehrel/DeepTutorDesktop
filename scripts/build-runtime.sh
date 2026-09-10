@@ -6,62 +6,121 @@
 # copied into this repository (see docs/adr/0003-embedded-web-stack.md):
 #   - python-build-standalone CPython (via uv's managed downloads)
 #   - deeptutor==<DEEPTUTOR_VERSION> from PyPI (wheel, includes deeptutor_web)
-#   - Node.js official binary tarball
+#   - Node.js official binary archive
 #
 # Output layout (consumed by tauri.conf.json `bundle.resources`):
-#   runtime/<target>/python/   relocatable CPython + deeptutor + deps
-#   runtime/<target>/node/     official Node.js distribution
+#   runtime/current/python/   relocatable CPython + deeptutor + deps
+#   runtime/current/node/     official Node.js distribution
 #
-# Usage: scripts/build-runtime.sh [darwin-arm64]
+# The canonical platform directory (runtime/<target>/) is kept for inspection;
+# `runtime/current` is what the bundle packs and must exist before `pnpm build`.
+#
+# Run on a runner matching the target platform/architecture. Supported targets:
+#   darwin-arm64 | darwin-x64 | linux-x64 | win32-x64
+#
+# 构建输入均为锁定版本的外部依赖, 不拷贝上游源码 (见
+# docs/adr/0003-embedded-web-stack.md)。需要在目标平台/架构一致的机器上运行。
+# 规范目录 runtime/<target>/ 保留供检查; 实际打包读取 runtime/current。
 
 set -euo pipefail
 
-TARGET="${1:-darwin-arm64}"
 DEEPTUTOR_VERSION="${DEEPTUTOR_VERSION:-1.6.6}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.13}"
 NODE_VERSION="${NODE_VERSION:-22.20.0}"
 
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+# ---- Detect host platform and map it to a target id ----------------------
+# 探测宿主平台并映射为目标标识
+OS="$(uname -s)"
+ARCH="$(uname -m)"
+case "$OS-$ARCH" in
+  Darwin-arm64) DEFAULT_TARGET=darwin-arm64 ;;
+  Darwin-x86_64) DEFAULT_TARGET=darwin-x64 ;;
+  Linux-x86_64) DEFAULT_TARGET=linux-x64 ;;
+  MINGW*-AMD64|MSYS*-AMD64|CYGWIN*-AMD64) DEFAULT_TARGET=win32-x64 ;;
+  *)
+    echo "unsupported host: $OS-$ARCH (pass an explicit target if confident)" >&2
+    exit 2
+    ;;
+esac
+TARGET="${1:-$DEFAULT_TARGET}"
+
+# Mapping tables: uv/python-build-standalone triples and Node archives.
+# 映射表: uv/python-build-standalone triple 与 Node 发行包。
 case "$TARGET" in
-  darwin-arm64) NODE_ARCH=darwin-arm64 ;;
-  darwin-x64)   NODE_ARCH=darwin-x64 ;;
-  win32-x64)    NODE_ARCH=win-x64 ;;
-  linux-x64)    NODE_ARCH=linux-x64 ;;
+  darwin-arm64)
+    UV_TRIPLE=macos-aarch64-none;    NODE_ARCH=darwin-arm64; NODE_EXT=tar.gz ;;
+  darwin-x64)
+    UV_TRIPLE=macos-x86_64-none;     NODE_ARCH=darwin-x64;   NODE_EXT=tar.gz ;;
+  linux-x64)
+    UV_TRIPLE=linux-x86_64-gnu;      NODE_ARCH=linux-x64;    NODE_EXT=tar.xz ;;
+  win32-x64)
+    UV_TRIPLE=windows-x86_64-none;   NODE_ARCH=win-x64;      NODE_EXT=zip ;;
   *) echo "unsupported target: $TARGET" >&2; exit 2 ;;
 esac
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OUT="$ROOT/runtime/$TARGET"
-UV_PYTHON_DIR="${UV_PYTHON_DIR:-$HOME/.local/share/uv/python}"
+# Windows CI runners expose bash via Git for Windows; use it transparently.
+is_windows() { [[ "$TARGET" == win32-* ]]; }
 
-echo "==> runtime output: $OUT"
-rm -rf "$OUT/python" "$OUT/node"
+echo "==> target: $TARGET (deeptutor=$DEEPTUTOR_VERSION python=$PYTHON_VERSION node=$NODE_VERSION)"
+OUT="$ROOT/runtime/$TARGET"
+CURRENT="$ROOT/runtime/current"
+rm -rf "$OUT"
 mkdir -p "$OUT"
 
-# 1. Relocatable CPython from uv's python-build-standalone download.
-#    从 uv 管理的 python-build-standalone 拷贝可重定位 CPython。
+# ---- 1. Relocatable CPython from uv's python-build-standalone download ----
+# 从 uv 管理的 python-build-standalone 拷贝可重定位 CPython。
 uv python install "$PYTHON_VERSION"
-PYTHON_SRC="$(ls -d "$UV_PYTHON_DIR"/cpython-"$PYTHON_VERSION".*-macos-aarch64-none 2>/dev/null | sort | tail -1 || true)"
-if [[ "$TARGET" != darwin-arm64 || -z "$PYTHON_SRC" ]]; then
-  echo "cross-target python builds require uv on the target platform" >&2
+UV_PYTHON_DIR="${UV_PYTHON_DIR:-$HOME/.local/share/uv/python}"
+# The listing entry may be a symlink (e.g. cpython-3.13 -> cpython-3.13.x);
+# pick the newest matching triple and dereference on copy (-L).
+# 目录项可能是符号链接 (如 cpython-3.13 -> cpython-3.13.x); 选取最新匹配的
+# triple, 拷贝时解引用 (-L)。
+PYTHON_SRC="$(ls -d "$UV_PYTHON_DIR"/cpython-"$PYTHON_VERSION".*-"$UV_TRIPLE" 2>/dev/null | sort -V | tail -1)"
+if [ -z "$PYTHON_SRC" ]; then
+  echo "no uv-managed python for $UV_TRIPLE; is this runner the right arch?" >&2
   exit 3
 fi
-# -L: the uv listing may itself be a symlink chain; dereference it.
-# -L: uv 目录项可能是符号链接, 需要解引用拷贝。
+echo "==> python: $PYTHON_SRC"
 cp -RL "$PYTHON_SRC" "$OUT/python"
 # We own this copy; drop uv's externally-managed guard so pip installs work.
 # 该拷贝归本仓库构建所有, 移除 uv 的 externally-managed 标记。
-rm -f "$OUT/python/lib/python3."*/EXTERNALLY-MANAGED
+rm -f "$OUT"/python/lib/python3.*/EXTERNALLY-MANAGED
 
-# 2. deeptutor wheel as a pinned external dependency.
-#    以锁定版本的外部依赖形式安装 deeptutor wheel。
-uv pip install --python "$OUT/python/bin/python3" "deeptutor==$DEEPTUTOR_VERSION"
+PYTHON_BIN="$OUT/python/bin/python3"
+is_windows && PYTHON_BIN="$OUT/python/bin/python.exe"
 
-# 3. Official Node.js distribution.
-#    官方 Node.js 发行版。
-curl -fsSL -o "$OUT/node.tar.gz" "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-$NODE_ARCH.tar.gz"
-tar xzf "$OUT/node.tar.gz" -C "$OUT"
-mv "$OUT/node-v$NODE_VERSION-$NODE_ARCH" "$OUT/node"
-rm "$OUT/node.tar.gz"
+# ---- 2. deeptutor wheel as a pinned external dependency -------------------
+# 以锁定版本的外部依赖形式安装 deeptutor wheel。
+uv pip install --python "$PYTHON_BIN" "deeptutor==$DEEPTUTOR_VERSION"
 
-du -sh "$OUT/python" "$OUT/node"
-echo "==> done: $OUT"
+# ---- 3. Official Node.js distribution ------------------------------------
+# 官方 Node.js 发行版。
+NODE_ARCHIVE="node-v$NODE_VERSION-$NODE_ARCH.$NODE_EXT"
+echo "==> node: $NODE_ARCHIVE"
+curl -fsSL -o "$OUT/$NODE_ARCHIVE" "https://nodejs.org/dist/v$NODE_VERSION/$NODE_ARCHIVE"
+if is_windows; then
+  # unzip ships with GitHub Windows runners; fall back to powershell.
+  # Windows runner 自带 unzip; 缺失时回退 powershell。
+  unzip -q "$OUT/$NODE_ARCHIVE" -d "$OUT" \
+    || powershell -NoProfile -Command "Expand-Archive -Force '$OUT/$NODE_ARCHIVE' '$OUT'"
+  mv "$OUT/node-v$NODE_VERSION-$NODE_ARCH" "$OUT/node"
+else
+  tar xf "$OUT/$NODE_ARCHIVE" -C "$OUT"
+  mv "$OUT/node-v$NODE_VERSION-$NODE_ARCH" "$OUT/node"
+fi
+rm -f "$OUT/$NODE_ARCHIVE"
+
+# ---- 4. Publish the uniform path consumed by tauri.conf.json -------------
+# 生成 tauri.conf.json 引用的统一路径 runtime/current。
+rm -rf "$CURRENT"
+if is_windows; then
+  powershell -NoProfile -Command "Copy-Item -Recurse -Force '$OUT' '$CURRENT'"
+else
+  cp -RL "$OUT" "$CURRENT"
+fi
+
+du -sh "$OUT/python" "$OUT/node" "$CURRENT"
+echo "==> done: $CURRENT (from $OUT)"

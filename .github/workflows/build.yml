@@ -1,0 +1,113 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Apple Silicon and Intel macOS build on matching runners so the
+          # embedded Python runtime matches the host architecture.
+          # Apple Silicon 与 Intel macOS 在对应架构的 runner 上构建,
+          # 保证内嵌 Python runtime 与宿主架构一致。
+          - {os: macos-14, target: darwin-arm64, platform: macos-apple-silicon}
+          - {os: macos-13, target: darwin-x64, platform: macos-intel}
+          - {os: ubuntu-22.04, target: linux-x64, platform: linux-x64}
+          - {os: windows-latest, target: win32-x64, platform: windows-x64}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: astral-sh/setup-uv@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: >
+          sudo apt-get update && sudo apt-get install -y
+          libwebkit2gtk-4.1-dev build-essential curl wget file
+          libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build embedded runtime (${{ matrix.target }})
+        shell: bash
+        run: bash scripts/build-runtime.sh ${{ matrix.target }}
+
+      - name: Build desktop bundle
+        run: pnpm build
+
+      # Stage installers under explicit platform/arch names — Intel and
+      # Apple Silicon macOS packages must never share a filename.
+      # 以明确的平台/架构命名归档安装包 —— Intel 与 Apple Silicon 的
+      # macOS 包绝不共用文件名。
+      - name: Stage packages
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          mkdir -p packages
+          shopt -s nullglob
+          for f in src-tauri/target/release/bundle/dmg/*.dmg; do
+            cp "$f" "packages/DeepTutor_${VERSION}_${{ matrix.platform }}.dmg"
+          done
+          for f in src-tauri/target/release/bundle/deb/*.deb; do
+            cp "$f" "packages/DeepTutor_${VERSION}_${{ matrix.platform }}.deb"
+          done
+          for f in src-tauri/target/release/bundle/appimage/*.AppImage; do
+            cp "$f" "packages/DeepTutor_${VERSION}_${{ matrix.platform }}.AppImage"
+          done
+          ls -lh packages/
+
+      - name: Stage packages (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          mkdir -p packages
+          shopt -s nullglob
+          for f in src-tauri/target/release/bundle/nsis/*.exe; do
+            cp "$f" "packages/DeepTutor_${VERSION}_${{ matrix.platform }}_setup.exe"
+          done
+          ls -lh packages/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DeepTutor-${{ matrix.platform }}
+          path: packages/*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
