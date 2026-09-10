@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deeptutor.info/schemas/bridge/v1/event.schema.json",
+  "title": "DeepTutor Desktop Bridge Event",
+  "type": "object",
+  "required": ["jsonrpc", "method", "params"],
+  "properties": {
+    "jsonrpc": { "const": "2.0" },
+    "method": { "const": "event" },
+    "params": {
+      "type": "object",
+      "required": ["event"],
+      "properties": {
+        "event": { "type": "string" },
+        "request_id": { "type": ["string", "integer", "null"] },
+        "turn_id": { "type": ["string", "null"] },
+        "session_id": { "type": ["string", "null"] },
+        "source": { "type": ["string", "null"] },
+        "stage": { "type": ["string", "null"] },
+        "content": { "type": "string" },
+        "text": { "type": "string" },
+        "metadata": { "type": "object" },
+        "seq": { "type": ["integer", "null"], "minimum": 0 },
+        "timestamp": { "type": ["number", "null"] },
+        "status": { "type": "string" },
+        "code": { "type": "string" },
+        "message": { "type": "string" },
+        "retryable": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

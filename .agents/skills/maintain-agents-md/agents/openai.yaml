@@ -1,0 +1,10 @@
+interface:
+  # 中文：维护 AGENTS.md
+  display_name: "Maintain AGENTS.md"
+  # 中文：维护精简、分层且可验证的仓库 Agent 指南
+  short_description: "Maintain concise, scoped, and verifiable agent guidance"
+  # 中文：使用 $maintain-agents-md 将这项持久规则放入正确的仓库说明层级，并验证最终指南。
+  default_prompt: "Use $maintain-agents-md to place this durable rule in the correct repository instruction layer and validate the resulting guidance."
+
+policy:
+  allow_implicit_invocation: true

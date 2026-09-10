@@ -1,0 +1,36 @@
+# Frontend / Node
+node_modules/
+dist/
+out/
+*.log
+
+# Tauri / Rust
+target/
+src-tauri/gen/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local runtime and user data
+runtime/*
+!runtime/.gitkeep
+user-data/
+data/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Signing and local secrets
+.env
+.env.*
+*.p12
+*.p12.enc
+*.provisionprofile

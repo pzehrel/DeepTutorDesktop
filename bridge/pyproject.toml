@@ -1,0 +1,64 @@
+[build-system]
+requires = [ "hatchling>=1.27" ]
+build-backend = "hatchling.build"
+
+[project]
+name = "deeptutor-desktop-bridge"
+version = "0.1.0"
+description = "stdio JSON-RPC bridge for the DeepTutor Desktop Tauri shell"
+requires-python = ">=3.12,<3.14"
+dependencies = [ "deeptutor==1.6.6" ]
+
+[project.scripts]
+deeptutor-desktop-bridge = "deeptutor_desktop_bridge.__main__:main"
+
+[project.optional-dependencies]
+dev = [
+  "pyright>=1.1.390",
+  "pytest>=8.0",
+  "ruff>=0.13.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = [ "src/deeptutor_desktop_bridge" ]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = [
+  "src",
+  "tests"
+]
+
+[tool.ruff.lint]
+select = [
+  "E4",
+  "E7",
+  "E9",
+  "F",
+  "I",
+  "B",
+  "UP",
+  "ASYNC",
+  "SIM",
+  "RET",
+  "RUF"
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.pyright]
+include = [
+  "src",
+  "tests"
+]
+exclude = [
+  ".venv",
+  "dist"
+]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+reportMissingTypeStubs = "none"

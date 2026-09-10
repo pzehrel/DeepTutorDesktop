@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deeptutor.info/schemas/bridge/v1/request.schema.json",
+  "title": "DeepTutor Desktop Bridge Request",
+  "type": "object",
+  "required": ["jsonrpc", "id", "method"],
+  "properties": {
+    "jsonrpc": { "const": "2.0" },
+    "id": { "type": ["string", "integer", "null"] },
+    "method": { "type": "string", "minLength": 1 },
+    "params": {
+      "type": "object",
+      "properties": {
+        "message": { "type": "string", "minLength": 1 },
+        "content": { "type": "string", "minLength": 1 },
+        "session_id": { "type": ["string", "null"] },
+        "turn_id": { "type": "string", "minLength": 1 },
+        "capability": { "type": ["string", "null"] },
+        "tools": { "type": ["array", "null"], "items": { "type": "string" } },
+        "knowledge_bases": { "type": "array", "items": { "type": "string" } },
+        "language": { "type": ["string", "null"] },
+        "config": { "type": "object" },
+        "attachments": { "type": "array" },
+        "text": { "type": ["string", "null"] },
+        "answers": { "type": ["array", "null"], "items": { "type": "object" } },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "offset": { "type": "integer", "minimum": 0, "maximum": 1000000 }
+      }
+    }
+  },
+  "additionalProperties": false
+}
