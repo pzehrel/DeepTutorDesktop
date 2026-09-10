@@ -11,6 +11,22 @@ type StackState
 type Theme = 'snow' | 'light' | 'dark' | 'glass'
 
 /**
+ * Loader copy follows the OS language: Chinese for any `zh` locale, English
+ * for everything else. DeepTutor itself is seeded with the same rule by the
+ * Rust core on first launch.
+ *
+ * 加载页文案跟随系统语言: 任意 `zh` locale 用中文, 其余一律英文。
+ * DeepTutor 本体的语言由 Rust 核心在首次启动时按同一规则预置。
+ */
+const isChinese = typeof navigator !== 'undefined'
+  && navigator.language.toLowerCase().startsWith('zh')
+
+const copy = {
+  status: isChinese ? '正在启动内嵌 DeepTutor 运行时…' : 'Starting the embedded DeepTutor runtime…',
+  retry: isChinese ? '重试' : 'Retry',
+} as const
+
+/**
  * Boot loader for the embedded DeepTutor web app.
  *
  * The Rust core starts `deeptutor start` against a bundled Python + Node
@@ -96,13 +112,13 @@ export default function App() {
         ? (
             <div className="loader-error">
               <p>{state.message}</p>
-              <button type="button" onClick={() => void retry()}>Retry</button>
+              <button type="button" onClick={() => void retry()}>{copy.retry}</button>
             </div>
           )
         : (
             <p className="loader-status">
               <span className="spinner" aria-hidden />
-              Starting the embedded DeepTutor runtime…
+              {copy.status}
             </p>
           )}
     </main>

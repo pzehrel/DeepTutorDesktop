@@ -190,6 +190,37 @@ fn theme_from_home(home: &Path) -> String {
     }
 }
 
+/// Seed the interface language on first launch from the OS locale.
+///
+/// DeepTutor persists its UI language in `data/user/settings/interface.json`
+/// and otherwise defaults to English. To honor the user's system language on
+/// first launch, write the detected language (`zh` for any Chinese locale,
+/// `en` for everything else) before the stack boots — only when the file does
+/// not exist yet, so in-app language choices are never overwritten.
+///
+/// 首次启动时按系统语言预置界面语言。DeepTutor 的界面语言持久化在
+/// `data/user/settings/interface.json`, 缺省为英文。为保证首次启动跟随
+/// 系统语言, 在栈启动前写入检测到的语言 (任意中文 locale 为 `zh`,
+/// 其余一律 `en`) —— 仅在文件不存在时写入, 不会覆盖应用内的语言选择。
+fn seed_interface_language(home: &Path) {
+    let settings = home
+        .join("data")
+        .join("user")
+        .join("settings")
+        .join("interface.json");
+    if settings.exists() {
+        return;
+    }
+    let language = match sys_locale::get_locale() {
+        Some(locale) if locale.to_lowercase().starts_with("zh") => "zh",
+        _ => "en",
+    };
+    if let Some(parent) = settings.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(&settings, format!("{{\"language\": \"{language}\"}}"));
+}
+
 /// Locate the bundled runtime directory and its Python interpreter.
 ///
 /// Resolution order:
@@ -338,6 +369,7 @@ async fn start_stack(app: &AppHandle) -> Result<String, String> {
         .map_err(|error| format!("cannot resolve app data dir: {error}"))?
         .join("deeptutor");
     std::fs::create_dir_all(&home).map_err(|error| format!("cannot create home dir: {error}"))?;
+    seed_interface_language(&home);
 
     run_cli(
         &python,
@@ -463,6 +495,25 @@ mod tests {
     #[test]
     fn missing_settings_yield_no_port() {
         assert_eq!(frontend_port(Path::new("/nonexistent-dt-home")), None);
+    }
+
+    #[test]
+    fn language_seed_writes_only_when_missing() {
+        let dir = std::env::temp_dir().join("dt-stack-lang-home");
+        let settings = dir.join("data").join("user").join("settings");
+        let _ = std::fs::remove_dir_all(&dir);
+        seed_interface_language(&dir);
+        let seeded = std::fs::read_to_string(settings.join("interface.json")).unwrap();
+        assert!(seeded.contains("\"language\""));
+        // Existing user choices must survive: rewrite and confirm no overwrite.
+        // 已有的用户选择必须保留: 改写后确认不会被覆盖。
+        std::fs::write(settings.join("interface.json"), "{\"language\": \"zh\"}").unwrap();
+        seed_interface_language(&dir);
+        assert_eq!(
+            std::fs::read_to_string(settings.join("interface.json")).unwrap(),
+            "{\"language\": \"zh\"}"
+        );
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
