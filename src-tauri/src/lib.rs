@@ -39,6 +39,13 @@ async fn stack_status(manager: State<'_, StackManager>) -> Result<StackState, St
     Ok(manager.state().await)
 }
 
+/// DeepTutor's persisted interface theme, mirrored by the boot loader.
+/// DeepTutor 持久化的界面主题, 启动加载页与其保持一致。
+#[tauri::command]
+fn stack_theme(app: AppHandle) -> String {
+    stack::persisted_theme(&app)
+}
+
 #[tauri::command]
 async fn bridge_start(
     app: AppHandle,
@@ -177,6 +184,7 @@ pub fn run() {
             stack_start,
             stack_stop,
             stack_status,
+            stack_theme,
             bridge_start,
             bridge_stop,
             bridge_status,

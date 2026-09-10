@@ -148,14 +148,54 @@ fn emit_state(app: &AppHandle, state: &StackState) {
     }
 }
 
+/// The default loader theme when DeepTutor has not persisted one yet.
+/// DeepTutor 尚未持久化主题设置时, 加载页使用的默认主题。
+const DEFAULT_THEME: &str = "snow";
+
+/// Read DeepTutor's persisted interface theme (`snow|light|dark|glass`).
+///
+/// DeepTutor writes its theme switch to
+/// `<home>/data/user/settings/interface.json`; the boot loader reads the same
+/// value so both surfaces always agree, including after in-app switches.
+///
+/// 读取 DeepTutor 持久化的界面主题 (`snow|light|dark|glass`)。DeepTutor
+/// 切换主题时会写入 `<home>/data/user/settings/interface.json`; 启动加载页
+/// 读取同一份数据, 保证两个界面始终一致, 应用内切换后也会跟随。
+pub fn persisted_theme(app: &AppHandle) -> String {
+    app.path()
+        .app_data_dir()
+        .ok()
+        .map(|dir| dir.join("deeptutor"))
+        .map(|home| theme_from_home(&home))
+        .unwrap_or_else(|| DEFAULT_THEME.to_string())
+}
+
+/// Pure home-dir variant of [`persisted_theme`], unit-testable without an app.
+/// [`persisted_theme`] 的纯函数版本, 无需 AppHandle 即可单测。
+fn theme_from_home(home: &Path) -> String {
+    let settings = home
+        .join("data")
+        .join("user")
+        .join("settings")
+        .join("interface.json");
+    let Ok(raw) = std::fs::read_to_string(settings) else {
+        return DEFAULT_THEME.to_string();
+    };
+    let Ok(value) = serde_json::from_str::<Value>(&raw) else {
+        return DEFAULT_THEME.to_string();
+    };
+    match value.get("theme").and_then(Value::as_str) {
+        Some(theme) if ["snow", "light", "dark", "glass"].contains(&theme) => theme.to_string(),
+        _ => DEFAULT_THEME.to_string(),
+    }
+}
+
 /// Locate the bundled runtime directory and its Python interpreter.
 ///
 /// Resolution order:
 /// 1. `DEEPTUTOR_RUNTIME_DIR` override (expects `python/` and `node/` inside);
 /// 2. the bundled Tauri resources (`Resources/runtime` in a packaged app);
 /// 3. the repository checkout's `runtime/darwin-arm64` (development mode).
-///
-/// Locate the bundled runtime directory and its Python interpreter.
 ///
 /// 解析内嵌 runtime 目录: 环境变量覆盖 > Tauri resources > 仓库 runtime 目录。
 pub fn resolve_runtime(app: &AppHandle) -> Option<(PathBuf, PathBuf)> {
@@ -418,6 +458,22 @@ mod tests {
     #[test]
     fn missing_settings_yield_no_port() {
         assert_eq!(frontend_port(Path::new("/nonexistent-dt-home")), None);
+    }
+
+    #[test]
+    fn theme_falls_back_to_snow_when_unset() {
+        let dir = std::env::temp_dir().join("dt-stack-theme-home");
+        let settings = dir.join("data").join("user").join("settings");
+        std::fs::create_dir_all(&settings).unwrap();
+        std::fs::write(settings.join("interface.json"), r#"{"language": "en"}"#).unwrap();
+        assert_eq!(theme_from_home(&dir), "snow");
+        std::fs::write(
+            settings.join("interface.json"),
+            r#"{"theme": "glass", "language": "en"}"#,
+        )
+        .unwrap();
+        assert_eq!(theme_from_home(&dir), "glass");
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

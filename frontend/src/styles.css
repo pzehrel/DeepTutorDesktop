@@ -1,7 +1,72 @@
+/*
+ * Boot loader theme mirrors DeepTutor's four interface themes. Variable values
+ * are copied from DeepTutor's own compiled theme palettes so the loader is
+ * visually indistinguishable from the app that replaces it.
+ *
+ * 启动加载页镜像 DeepTutor 的四套界面主题。变量取值直接来自 DeepTutor
+ * 编译产物中的主题配色, 保证加载页与随后打开的应用视觉一致。
+ */
+
+/* Default when no theme has been persisted yet: DeepTutor's "snow". */
+/* 尚未持久化主题时的默认值: DeepTutor 的 "snow"。 */
+:root,
+:root[data-theme='snow'] {
+  color-scheme: light;
+  --background: #ffffff;
+  --foreground: #0d0d0d;
+  --muted: #f2f2f2;
+  --muted-foreground: #6e6e6e;
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --border: #e5e5e5;
+  --surface-raised: #ffffff;
+  --body-background: var(--background);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --background: #fdfcf9;
+  --foreground: #1c1816;
+  --muted: #f1ede2;
+  --muted-foreground: #6d645a;
+  --primary: #b0501e;
+  --primary-foreground: #ffffff;
+  --border: #e6decc;
+  --surface-raised: #ffffff;
+  --body-background: var(--background);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --background: #1a1918;
+  --foreground: #e8e4de;
+  --muted: #2a2725;
+  --muted-foreground: #9b9590;
+  --primary: #d4734b;
+  --primary-foreground: #1a1918;
+  --border: #3a3634;
+  --surface-raised: #242220;
+  --body-background: var(--background);
+}
+
+/* Glass keeps DeepTutor's deep-violet gradient backdrop. */
+/* Glass 主题保留 DeepTutor 的深紫渐变背景。 */
+:root[data-theme='glass'] {
+  color-scheme: dark;
+  --background: #0e0d1a;
+  --foreground: #ffffff;
+  --muted: rgba(255, 255, 255, 0.06);
+  --muted-foreground: #b5b5c7;
+  --primary: #a855f7;
+  --primary-foreground: #ffffff;
+  --border: rgba(255, 255, 255, 0.12);
+  --surface-raised: rgba(35, 32, 51, 0.96);
+  --body-background: radial-gradient(circle at 50% 50%, #1a1a2e 0%, #0d0d1a 100%);
+}
+
 :root {
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #e5e7eb;
-  background: #0b1120;
+  color: var(--foreground);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -14,6 +79,8 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background: var(--body-background);
+  background-attachment: fixed;
 }
 
 /* Boot loader shown until the embedded DeepTutor web UI is ready. */
@@ -30,6 +97,7 @@ body {
 }
 
 .loader-logo {
+  border: 1px solid var(--border);
   border-radius: 1.5rem;
   height: 96px;
   width: 96px;
@@ -43,13 +111,13 @@ body {
 
 .loader-status {
   align-items: center;
-  color: #9ca3af;
+  color: var(--muted-foreground);
   display: flex;
   gap: 0.75rem;
 }
 
 .loader-error {
-  color: #fca5a5;
+  color: var(--foreground);
   display: grid;
   gap: 1rem;
   justify-items: center;
@@ -66,8 +134,8 @@ body {
 button {
   border: 0;
   border-radius: 0.75rem;
-  background: #60a5fa;
-  color: #0b1120;
+  background: var(--primary);
+  color: var(--primary-foreground);
   cursor: pointer;
   font: inherit;
   font-weight: 700;
@@ -75,14 +143,14 @@ button {
 }
 
 button:hover {
-  background: #93c5fd;
+  filter: brightness(1.1);
 }
 
 .spinner {
   animation: spin 1s linear infinite;
-  border: 3px solid #24324a;
+  border: 3px solid var(--border);
   border-radius: 50%;
-  border-top-color: #60a5fa;
+  border-top-color: var(--primary);
   display: inline-block;
   height: 1.1rem;
   width: 1.1rem;
