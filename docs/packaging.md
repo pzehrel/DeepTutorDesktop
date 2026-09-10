@@ -2,15 +2,15 @@
 
 ## 1. 构建输入
 
-每个目标平台单独构建一个 runtime artifact：
+每个目标平台单独构建一个 runtime artifact，由 `scripts/build-runtime.sh` 产出：
 
 ```text
 runtime/<target>/
-├── python 或 deeptutor-bridge
-├── site-packages/
-├── resources/
-└── manifest.json
+├── python/       # 可重定位 CPython (python-build-standalone) + deeptutor wheel 及依赖
+└── node/         # Node.js 官方二进制（deeptutor_web 的 Next.js server 需要）
 ```
+
+DeepTutor 始终以锁定版本的 PyPI wheel（`deeptutor==<version>`）作为外部依赖安装进 runtime；本仓库不复制或修改其源码（见 ADR-0003）。构建产物通过 Tauri `bundle.resources` 映射为应用资源（`Resources/runtime/`），不提交到 Git。
 
 目标示例：
 

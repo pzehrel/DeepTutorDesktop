@@ -1,231 +1,90 @@
-import type { BridgeEvent, BridgeInfo, TransportError } from './transport'
+import { invoke } from '@tauri-apps/api/core'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { createTransport } from './transport'
+import { listen } from '@tauri-apps/api/event'
+import { useCallback, useEffect, useState } from 'react'
 
-interface ChatMessage {
-  id: string
-  role: 'user' | 'assistant'
-  text: string
-}
+type StackState
+  = | { status: 'stopped' }
+    | { status: 'starting' }
+    | { status: 'ready', url: string }
+    | { status: 'failed', message: string }
 
-type BridgePhase = 'idle' | 'starting' | 'running' | 'streaming' | 'error'
-
-let messageSeq = 0
-function nextMessageId(): string {
-  messageSeq += 1
-  return `msg-${messageSeq}`
-}
-
+/**
+ * Boot loader for the embedded DeepTutor web app.
+ *
+ * The Rust core starts `deeptutor start` against a bundled Python + Node
+ * runtime and emits `deeptutor://state`. Once the packaged Next.js frontend is
+ * reachable on the loopback interface, this shell navigates the window to it —
+ * from that point on the user is inside the full DeepTutor interface.
+ *
+ * 内嵌 DeepTutor Web 应用的启动加载页。Rust 核心会用内嵌的 Python + Node
+ * 运行时启动 `deeptutor start`, 并通过 `deeptutor://state` 广播状态; 内置
+ * Next.js 前端在回环地址就绪后, 本页面把窗口跳转过去 —— 之后用户就一直
+ * 处在完整的 DeepTutor 界面里。
+ */
 export default function App() {
-  const [phase, setPhase] = useState<BridgePhase>('idle')
-  const [info, setInfo] = useState<BridgeInfo | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [streamingText, setStreamingText] = useState('')
-  const [draft, setDraft] = useState('')
-  const activeTurn = useRef<string | null>(null)
-  const streamBuffer = useRef('')
+  const [state, setState] = useState<StackState>({ status: 'stopped' })
 
   useEffect(() => {
-    const transport = createTransport()
+    let cancelled = false
 
-    const handleEvent = (event: BridgeEvent) => {
-      if (event.event === 'chat.delta' && typeof event.text === 'string') {
-        // Deltas arrive as small fragments; buffer then flush per render.
-        // delta 是小片段; 先缓冲再按渲染周期刷新。
-        streamBuffer.current += event.text
-        setStreamingText(streamBuffer.current)
+    function apply(next: StackState) {
+      if (cancelled) {
         return
       }
-      if (event.event === 'chat.done' || event.event === 'chat.error') {
-        const text = streamBuffer.current
-        if (text) {
-          setMessages(prev => [...prev, { id: nextMessageId(), role: 'assistant', text }])
-        }
-        if (event.event === 'chat.error') {
-          const message = typeof event.message === 'string' ? event.message : 'turn failed'
-          setError(message)
-        }
-        streamBuffer.current = ''
-        setStreamingText('')
-        activeTurn.current = null
-        setPhase(p => (p === 'streaming' ? 'running' : p))
+      setState(next)
+      if (next.status === 'ready') {
+        // Replace this loader with the full DeepTutor web UI.
+        // 用完整 DeepTutor Web UI 替换本加载页。
+        window.location.replace(next.url)
       }
     }
 
-    const subscriptions: Array<() => void> = []
-    let cancelled = false
-
     void (async () => {
+      await listen<StackState>('deeptutor://state', event => apply(event.payload))
       try {
-        subscriptions.push(await transport.onEvent(handleEvent))
-        subscriptions.push(await transport.onStatus((status) => {
-          if (status.status === 'exited') {
-            activeTurn.current = null
-            streamBuffer.current = ''
-            setStreamingText('')
-            setPhase('idle')
-            setInfo(null)
-          }
-        }))
+        apply(await invoke<StackState>('stack_status'))
       }
-      catch (cause) {
-        if (!cancelled) {
-          setError(cause instanceof Error ? cause.message : String(cause))
-        }
+      catch {
+        // Status command unavailable (e.g. not inside Tauri); keep stopped.
+        // 取不到状态时(如不在 Tauri 内), 保持 stopped。
       }
     })()
 
     return () => {
       cancelled = true
-      for (const unsubscribe of subscriptions) {
-        unsubscribe()
-      }
     }
   }, [])
 
-  const startBridge = useCallback(async () => {
-    setError(null)
-    setPhase('starting')
+  const retry = useCallback(async () => {
     try {
-      const transport = createTransport()
-      const handshake = await transport.start()
-      setInfo(handshake)
-      setPhase('running')
+      setState(await invoke<StackState>('stack_start'))
     }
     catch (cause) {
-      setPhase('error')
-      setError(formatError(cause))
-    }
-  }, [])
-
-  const sendMessage = useCallback(async () => {
-    const text = draft.trim()
-    if (!text || phase === 'idle' || phase === 'starting' || phase === 'streaming') {
-      return
-    }
-    setDraft('')
-    setMessages(prev => [...prev, { id: nextMessageId(), role: 'user', text }])
-    setPhase('streaming')
-    try {
-      const transport = createTransport()
-      const result = await transport.sendChat({ message: text })
-      activeTurn.current = result.turn_id
-    }
-    catch (cause) {
-      setPhase('running')
-      setError(formatError(cause))
-    }
-  }, [draft, phase])
-
-  const cancelTurn = useCallback(async () => {
-    const turnId = activeTurn.current
-    if (!turnId) {
-      return
-    }
-    try {
-      await createTransport().cancel(turnId)
-    }
-    catch (cause) {
-      setError(formatError(cause))
+      setState({
+        status: 'failed',
+        message: cause instanceof Error ? cause.message : String(cause),
+      })
     }
   }, [])
 
   return (
-    <main className="shell">
-      <section className="hero">
-        <p className="eyebrow">TAURI DESKTOP SHELL</p>
-        <h1>DeepTutor Desktop</h1>
-        <p className="lede">
-          Chat with the packaged DeepTutor runtime through the Tauri-managed
-          stdio bridge.
-        </p>
-      </section>
-
-      <section className="status-card" aria-live="polite">
-        <div className="status-row">
-          <h2>Runtime status</h2>
-          <span className={`pill pill-${phase}`}>{phase}</span>
-        </div>
-        {info && (
-          <p className="status-detail">
-            agent
-            {' '}
-            {info.agent_version ?? 'unknown'}
-            {' · '}
-            bridge v
-            {info.bridge_version}
-            {' · '}
-            protocol v
-            {info.protocol_version}
-            {' · '}
-            {info.runtime_target}
-          </p>
-        )}
-        <div className="status-actions">
-          {phase === 'idle' || phase === 'error'
-            ? (
-                <button type="button" onClick={() => void startBridge()}>
-                  Start bridge
-                </button>
-              )
-            : phase === 'streaming'
-              ? (
-                  <button type="button" className="danger" onClick={() => void cancelTurn()}>
-                    Cancel turn
-                  </button>
-                )
-              : null}
-        </div>
-        {error && <p className="error">{error}</p>}
-      </section>
-
-      <section className="chat-card">
-        <h2>Chat</h2>
-        <div className="chat-log">
-          {messages.map(message => (
-            <div key={message.id} className={`bubble bubble-${message.role}`}>
-              {message.text}
+    <main className="loader">
+      <img src="/icon.png" alt="" className="loader-logo" />
+      <h1>DeepTutor</h1>
+      {state.status === 'failed'
+        ? (
+            <div className="loader-error">
+              <p>{state.message}</p>
+              <button type="button" onClick={() => void retry()}>Retry</button>
             </div>
-          ))}
-          {streamingText && (
-            <div className="bubble bubble-assistant bubble-streaming">
-              {streamingText}
-              <span className="cursor" aria-hidden>▍</span>
-            </div>
+          )
+        : (
+            <p className="loader-status">
+              <span className="spinner" aria-hidden />
+              Starting the embedded DeepTutor runtime…
+            </p>
           )}
-          {messages.length === 0 && !streamingText && (
-            <p className="chat-empty">Start the bridge and send a message.</p>
-          )}
-        </div>
-        <form
-          className="chat-composer"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void sendMessage()
-          }}
-        >
-          <input
-            value={draft}
-            onChange={event => setDraft(event.target.value)}
-            placeholder={phase === 'running' ? 'Ask DeepTutor…' : 'Start the bridge first…'}
-            disabled={phase !== 'running'}
-            aria-label="Message"
-          />
-          <button type="submit" disabled={phase !== 'running' || draft.trim().length === 0}>
-            Send
-          </button>
-        </form>
-      </section>
     </main>
   )
-}
-
-function formatError(cause: unknown): string {
-  if (cause instanceof Error && 'code' in cause) {
-    const typed = cause as TransportError
-    return `${typed.code}: ${typed.message}`
-  }
-  return cause instanceof Error ? cause.message : String(cause)
 }

@@ -9,10 +9,35 @@
 //! Renderer 本身不持有任何进程或 shell 权限。
 
 mod bridge;
+mod stack;
 
 use bridge::{BridgeError, BridgeManager};
 use serde_json::{json, Value};
+use stack::{StackManager, StackState};
 use tauri::{AppHandle, Manager, State};
+
+#[tauri::command]
+async fn stack_start(
+    app: AppHandle,
+    manager: State<'_, StackManager>,
+) -> Result<StackState, String> {
+    manager.start(&app).await;
+    Ok(manager.state().await)
+}
+
+#[tauri::command]
+async fn stack_stop(
+    app: AppHandle,
+    manager: State<'_, StackManager>,
+) -> Result<StackState, String> {
+    manager.stop(&app).await;
+    Ok(manager.state().await)
+}
+
+#[tauri::command]
+async fn stack_status(manager: State<'_, StackManager>) -> Result<StackState, String> {
+    Ok(manager.state().await)
+}
 
 #[tauri::command]
 async fn bridge_start(
@@ -112,11 +137,46 @@ async fn session_get(
         .await
 }
 
+/// Stop the embedded stack when the process is terminated by a signal.
+///
+/// SIGTERM/SIGINT bypass Tauri's `RunEvent::Exit`, which would otherwise
+/// orphan the detached `deeptutor start` launcher and its children.
+///
+/// SIGTERM/SIGINT 不会触发 Tauri 的 `RunEvent::Exit`; 不在此处处理的话,
+/// detached 的 `deeptutor start` launcher 及其子进程会成为孤儿。
+#[cfg(unix)]
+fn install_signal_shutdown(handle: AppHandle, stack: StackManager) {
+    use tokio::signal::unix::{signal, SignalKind};
+
+    tauri::async_runtime::spawn(async move {
+        let Ok(mut term) = signal(SignalKind::terminate()) else {
+            return;
+        };
+        let Ok(mut interrupt) = signal(SignalKind::interrupt()) else {
+            return;
+        };
+        tokio::select! {
+            _ = term.recv() => {}
+            _ = interrupt.recv() => {}
+        }
+        eprintln!("[deeptutor] shutdown signal received; stopping embedded stack");
+        stack.stop(&handle).await;
+        handle.exit(0);
+    });
+}
+
+#[cfg(not(unix))]
+fn install_signal_shutdown(_handle: AppHandle, _stack: StackManager) {}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(BridgeManager::default())
+        .manage(StackManager::default())
         .invoke_handler(tauri::generate_handler![
+            stack_start,
+            stack_stop,
+            stack_status,
             bridge_start,
             bridge_stop,
             bridge_status,
@@ -128,16 +188,39 @@ pub fn run() {
             session_list,
             session_get,
         ])
+        .setup(|app| {
+            // Boot the embedded DeepTutor stack as soon as the window exists;
+            // the renderer shows a loading state until `deeptutor://state`
+            // reports the ready URL, then navigates to the full web UI.
+            //
+            // 窗口创建后立即启动内嵌 DeepTutor 栈; Renderer 先显示加载态,
+            // 收到 `deeptutor://state` 的就绪 URL 后跳转到完整 Web UI。
+            let stack = app.state::<StackManager>().inner().clone();
+            tauri::async_runtime::spawn({
+                let handle = app.app_handle().clone();
+                let stack = stack.clone();
+                async move {
+                    stack.start(&handle).await;
+                }
+            });
+            install_signal_shutdown(app.app_handle().clone(), stack);
+            Ok(())
+        })
         .build(tauri::generate_context!())
         .expect("error while building DeepTutor Desktop")
         .run(|app, event| {
-            // Stop the sidecar when the app exits so no orphan process remains.
-            // 应用退出时停止 sidecar, 避免遗留孤儿进程。
+            // Stop the sidecar and the embedded stack when the app exits so no
+            // orphan process remains.
+            // 应用退出时停止 sidecar 与内嵌栈, 避免遗留孤儿进程。
             if matches!(event, tauri::RunEvent::Exit) {
                 if let Some(manager) = app.try_state::<BridgeManager>() {
                     if let Err(error) = tauri::async_runtime::block_on(manager.stop()) {
                         eprintln!("[bridge] shutdown on exit failed: {error}");
                     }
+                }
+                if let Some(stack) = app.try_state::<StackManager>() {
+                    let handle = app.app_handle().clone();
+                    tauri::async_runtime::block_on(stack.stop(&handle));
                 }
             }
         });

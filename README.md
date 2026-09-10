@@ -2,7 +2,7 @@
 
 DeepTutor Desktop 是 DeepTutor 的 Tauri 桌面分发层，目标是把 DeepTutor agent runtime 随应用一起分发，并通过进程间通信使用它。
 
-当前状态：Bridge 协议层与 Tauri 集成层已实现（stdio JSON-RPC、sidecar 生命周期管理、前端 transport 与聊天界面）；runtime 打包与分发尚未实现，见[打包策略](docs/packaging.md)。
+当前状态：**完整应用已可构建**。`pnpm build` 产出内嵌 DeepTutor 全栈（Python runtime + Node.js + `deeptutor` wheel）的桌面应用，打开即是完整 DeepTutor Web 界面；同时保留 stdio bridge 协议层用于编程式访问。构建 runtime 需先运行 `scripts/build-runtime.sh`。架构决策见 [ADR-0003](docs/adr/0003-embedded-web-stack.md)。
 
 ## 设计目标
 
@@ -16,19 +16,15 @@ DeepTutor Desktop 是 DeepTutor 的 Tauri 桌面分发层，目标是把 DeepTut
 ## 目标架构
 
 ```text
-Renderer / Frontend
-        │ Tauri IPC
-        ▼
-Tauri Rust Core
-        │ stdin/stdout JSON-RPC
-        ▼
-DeepTutor Desktop Bridge
-        │ Python import
-        ▼
-Embedded Python Runtime + DeepTutor Package
+Renderer（WebView：DeepTutor 完整 Web UI）
+        ▲ http://127.0.0.1（回环，ADR-0003）
         │
-        ▼
-User Data Directory
+DeepTutor Web（FastAPI 后端 + Next.js 前端）
+        ▲ stdin/stdout NDJSON（stdio bridge，ADR-0001）
+        │
+Embedded Python Runtime + deeptutor wheel + Node.js
+        │
+Tauri Rust Core（进程生命周期 / 就绪探测 / 窗口导航）
 ```
 
 ## 文档
@@ -42,10 +38,12 @@ User Data Directory
 ## 开发
 
 ```bash
-pnpm install          # 安装前端依赖
-pnpm test:bridge      # 运行 Python bridge 测试
-pnpm check            # JS/Python lint、typecheck 与全部测试
-pnpm dev              # 启动 Tauri 桌面应用（开发模式）
+pnpm install                  # 安装前端依赖
+pnpm test:bridge              # 运行 Python bridge 测试
+pnpm check                    # JS/Python lint、typecheck 与全部测试
+scripts/build-runtime.sh      # 构建内嵌 runtime（首次必做）
+pnpm dev                      # 启动 Tauri 桌面应用（开发模式）
+pnpm build                    # 打包完整 .app / .dmg
 ```
 
 开发模式下，Rust 核心会自动查找 `bridge/.venv` 中的 Python 解释器并启动
