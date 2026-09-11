@@ -63,9 +63,12 @@ jobs:
   build:
     name: ${{ matrix.platform }}
     needs: version
-    # Run for every non-tag event too, where the `version` job is skipped.
-    # 非 tag 事件下 `version` job 会被跳过, 此时仍需构建。
-    if: always() && !cancelled()
+    # Run for every non-tag event too, where the `version` job is skipped — but
+    # never when the version guard rejected the tag (nothing should be built or
+    # released from a tag that would move the version backwards).
+    # 非 tag 事件下 `version` job 会被跳过, 此时仍需构建 —— 但版本保护拒绝了
+    # tag 时绝不构建 (会让版本号倒退的 tag 不应产出任何产物或发布)。
+    if: always() && !cancelled() && (needs.version.result == 'success' || needs.version.result == 'skipped')
     strategy:
       fail-fast: false
       matrix:
