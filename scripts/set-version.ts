@@ -79,16 +79,80 @@ function normalizeVersion(raw: string): string {
   return version
 }
 
-const args = process.argv.slice(2)
-const checkOnly = args[0] === '--check'
-const rawVersion = checkOnly ? args[1] : args[0]
+/**
+ * Compare two `x.y.z` versions by their numeric parts; a pre-release suffix
+ * sorts below the matching release. Enough for the release guard, which only
+ * needs to know whether a tag moves the recorded version backwards.
+ *
+ * 按数值部分比较两个 `x.y.z` 版本; 带预发布后缀者排在同号正式版之前。发布
+ * 保护只需判断 tag 是否让已记录的版本号倒退, 该精度已足够。
+ */
+function compareVersions(a: string, b: string): number {
+  const [coreA, preA] = a.split(/[-+]/, 2)
+  const [coreB, preB] = b.split(/[-+]/, 2)
+  const partsA = coreA.split('.').map(Number)
+  const partsB = coreB.split('.').map(Number)
+  for (let i = 0; i < 3; i++) {
+    if (partsA[i] !== partsB[i])
+      return partsA[i] > partsB[i] ? 1 : -1
+  }
+  if (preA === preB)
+    return 0
+  if (!preA)
+    return 1
+  if (!preB)
+    return -1
+  return preA > preB ? 1 : -1
+}
 
-if (!rawVersion) {
-  console.error('usage: node scripts/set-version.ts [--check] <version>')
+/** Version currently recorded in package.json, or null when unreadable. */
+/** package.json 中当前记录的版本, 无法读取时为 null。 */
+function recordedVersion(): string | null {
+  const contents = readFileSync(join(root, 'package.json'), 'utf8')
+  return contents.match(/"version"\s*:\s*"([^"]+)"/)?.[1] ?? null
+}
+
+/**
+ * Release guard: refuse a tag that would move the recorded version backwards,
+ * which is what a re-pushed older tag (or a stale branch) would do.
+ *
+ * 发布保护: 拒绝会让已记录版本号倒退的 tag —— 重推旧 tag 或过期分支就会如此。
+ */
+function guard(target: string): void {
+  const current = recordedVersion()
+  if (!current) {
+    console.error('error: cannot read the current version from package.json')
+    process.exit(1)
+  }
+  const order = compareVersions(target, current)
+  if (order < 0) {
+    console.error(`error: tag version ${target} is older than the recorded version ${current}`)
+    console.error('note: bump the version forward, or delete/retarget the tag before releasing')
+    console.error(`注意: 请向前推进版本号, 或先删除/重新指向该 tag 再发布`)
+    process.exit(1)
+  }
+  console.log(order === 0
+    ? `version ${target} is already recorded; nothing to bump`
+    : `version ${current} -> ${target} (forward release)`)
+}
+
+const args = process.argv.slice(2)
+const guardOnly = args[0] === '--guard'
+const checkOnly = args[0] === '--check'
+const rawVersion = guardOnly || checkOnly ? args[1] : args[0]
+
+if (!rawVersion || (rawVersion.startsWith('--') && !guardOnly && !checkOnly)) {
+  console.error('usage: node scripts/set-version.ts [--check|--guard] <version>')
   process.exit(2)
 }
 
 const version = normalizeVersion(rawVersion)
+
+if (guardOnly) {
+  guard(version)
+  process.exit(0)
+}
+
 const changed: string[] = []
 const unchanged: string[] = []
 

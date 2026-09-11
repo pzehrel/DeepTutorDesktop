@@ -32,10 +32,15 @@ jobs:
         with:
           node-version: 22
 
+      # The guard runs first so a re-pushed older tag (or a stale branch) fails
+      # loudly instead of silently downgrading main's version number.
+      # 先跑保护检查: 重推的旧 tag (或过期分支) 会明确失败, 而不会静默把 main
+      # 上的版本号降级。
       - name: Write the tag version into every manifest
         id: bump
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
+          node scripts/set-version.ts --guard "$VERSION"
           node scripts/set-version.ts "$VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
