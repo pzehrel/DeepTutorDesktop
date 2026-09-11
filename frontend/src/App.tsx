@@ -107,15 +107,16 @@ export default function App() {
   return (
     <main className="loader">
       {/*
-        The loader uses a dedicated brand asset instead of `icon.png`: this PNG
-        is an opaque white rounded card whose corner radius matches
-        `.loader-logo` in styles.css, so it stays legible on all four loader
-        themes. `icon.png` belongs to the embedded application whose web UI
-        replaces the loader and must keep matching that upstream project.
+        The loader shows the official DeepTutor mark on an opaque white card,
+        which is the same artwork the application icon is built from. The card
+        keeps the mark legible on all four loader themes, including the dark and
+        glass backgrounds. `icon.png` is deliberately not reused here: it
+        belongs to the embedded application whose web UI replaces the loader and
+        must keep matching that upstream project.
 
-        加载页使用独立的品牌素材而非 `icon.png`: 该 PNG 是不透明白色圆角卡片,
-        圆角半径与 styles.css 中的 `.loader-logo` 一致, 因此在四套加载页主题下
-        都保持可辨识。`icon.png` 属于内嵌应用自身(其 Web UI 会替换本加载页),
+        加载页展示官方 DeepTutor 标识, 置于不透明白色卡片上, 与应用图标同源。
+        卡片保证该标识在四套加载页主题(含 dark 与 glass 深色背景)下均可辨识。
+        这里刻意不复用 `icon.png`: 它属于内嵌应用自身, 其 Web UI 会替换本加载页,
         必须与上游项目保持一致。
       */}
       <img src="/deeptutor-logo.png" alt="" className="loader-logo" />

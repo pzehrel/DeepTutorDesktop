@@ -19,6 +19,7 @@
   --primary: #2563eb;
   --primary-foreground: #ffffff;
   --border: #e5e5e5;
+  --logo-shadow: rgb(0 0 0 / 12%);
   --surface-raised: #ffffff;
   --body-background: var(--background);
 }
@@ -32,6 +33,7 @@
   --primary: #b0501e;
   --primary-foreground: #ffffff;
   --border: #e6decc;
+  --logo-shadow: rgb(0 0 0 / 14%);
   --surface-raised: #ffffff;
   --body-background: var(--background);
 }
@@ -45,6 +47,7 @@
   --primary: #d4734b;
   --primary-foreground: #1a1918;
   --border: #3a3634;
+  --logo-shadow: rgb(0 0 0 / 45%);
   --surface-raised: #242220;
   --body-background: var(--background);
 }
@@ -60,6 +63,7 @@
   --primary: #a855f7;
   --primary-foreground: #ffffff;
   --border: rgba(255, 255, 255, 0.12);
+  --logo-shadow: rgb(0 0 0 / 55%);
   --surface-raised: rgba(35, 32, 51, 0.96);
   --body-background: radial-gradient(circle at 50% 50%, #1a1a2e 0%, #0d0d1a 100%);
 }
@@ -97,16 +101,21 @@ body {
 }
 
 /*
- * The logo asset is a white card whose corner radius is 22% of its width.
- * Matching that here keeps the frame flush with the artwork at any size
- * instead of cutting across the colored shape.
+ * The logo asset is the official DeepTutor mark on an opaque white card whose
+ * corner radius is 22% of its width. Matching that radius here keeps the frame
+ * flush with the artwork at any size. A drop shadow replaces a border: a
+ * border in `--border` is invisible when the card sits on the near-white `snow`
+ * and `light` backgrounds, while the card itself already separates the mark
+ * from every theme's background.
  *
- * logo 素材是白色卡片, 其圆角半径为宽度的 22%。这里取相同比例, 任意尺寸下
- * 描边都与图形轮廓贴合, 不会横切过图形本身。
+ * logo 素材是官方 DeepTutor 标识置于不透明白色卡片上, 卡片圆角为宽度的 22%。
+ * 这里取相同半径, 任意尺寸下描边都与图形轮廓贴合。用投影替代描边: 卡片处在
+ * 接近纯白的 `snow` 与 `light` 背景上时, `--border` 描边会完全看不见; 而卡片
+ * 本身已足以把标识与各主题背景区分开。
  */
 .loader-logo {
-  border: 1px solid var(--border);
   border-radius: 22%;
+  filter: drop-shadow(0 2px 6px var(--logo-shadow));
   height: 96px;
   width: 96px;
 }
