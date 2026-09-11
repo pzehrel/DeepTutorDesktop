@@ -313,6 +313,27 @@ fn python_in(runtime_dir: &Path) -> Option<PathBuf> {
 /// `extra_env` 携带按调用覆盖的环境变量(launcher 会从进程环境读取,
 /// 例如 `start` 用的 `FRONTEND_PORT` / `BACKEND_PORT`)。
 /// 传空切片则仅使用默认值启动 CLI。
+///
+/// The interpreter's bytecode cache is redirected into `<home>/pycache`. Left
+/// at its default the interpreter writes `__pycache__/*.pyc` next to the
+/// packaged sources, which mutates resources sealed by the ad-hoc signature:
+/// Gatekeeper then reports "a sealed resource is missing or invalid" and
+/// re-assesses the bundle on later launches, and a notarized bundle would be
+/// rejected outright. The redirect keeps the seal intact while still caching
+/// bytecode across launches; the cost is one full recompilation on the first
+/// launch after the redirect appears. The cache lives beside `data/` because it
+/// is a regenerable interpreter artifact, not user data. Descendant processes
+/// (the launcher's uvicorn and Node children) inherit the variable, so the
+/// backend's much larger import set is redirected too.
+///
+/// 解释器的字节码缓存被重定向到 `<home>/pycache`。若保持默认, 解释器会在打包
+/// 源码旁写入 `__pycache__/*.pyc`, 这会改动被 ad-hoc 签名封印的资源: Gatekeeper
+/// 随即报 "a sealed resource is missing or invalid", 并在之后的启动中重新评估该
+/// bundle; 公证过的包更会被直接拒绝。重定向既保住封印, 又仍能跨启动复用字节码
+/// 缓存; 代价是引入重定向后的首次启动需要完整重新编译一遍。缓存放在 `data/` 旁
+/// 而非其内部, 因为它是可重新生成的解释器产物, 不属于用户数据。下游进程
+/// (launcher 拉起的 uvicorn 与 Node 子进程)会继承该变量, 因此后端大得多的导入
+/// 集合同样被重定向。
 async fn run_cli(
     python: &Path,
     args: &[&str],
@@ -325,6 +346,7 @@ async fn run_cli(
         .args(["-m", "deeptutor"])
         .args(args)
         .env("DEEPTUTOR_HOME", home)
+        .env("PYTHONPYCACHEPREFIX", home.join("pycache"))
         .env("PATH", prepend_node_bin(runtime_dir))
         .envs(extra_env.iter().copied())
         .stdout(Stdio::piped())
