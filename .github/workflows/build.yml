@@ -92,7 +92,12 @@ jobs:
         env:
           NO_STRIP: true
           APPIMAGE_EXTRACT_AND_RUN: '1'
-        run: pnpm build -- --verbose --bundles ${{ runner.os == 'Linux' && 'deb,rpm' || 'all' }}
+        # pnpm's script forwarding passes the -- separator through to the
+        # tauri CLI, which then hands the flags to cargo; invoke tauri
+        # directly via pnpm exec instead of the "build" script.
+        # pnpm 的脚本转发会把 -- 分隔符一并传给 tauri CLI, 导致标志被
+        # 转交 cargo; 改用 pnpm exec 直接调用 tauri 而不走 build 脚本。
+        run: pnpm exec tauri build --bundles ${{ runner.os == 'Linux' && 'deb,rpm' || 'all' }}
 
       # Stage installers under explicit platform/arch names — Intel and
       # Apple Silicon macOS packages must never share a filename.
