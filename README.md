@@ -6,7 +6,7 @@ A Tauri desktop distribution layer that packages all of [HKUDS/DeepTutor](https:
 - **The complete interface**: on launch the Rust core starts `deeptutor start` (FastAPI backend + Next.js frontend) and, once it is ready, navigates the window into the DeepTutor web UI — chat, knowledge bases, visualizations, settings, and every other feature.
 - **Theme and language follow**: the boot loader mirrors DeepTutor's four themes (snow / light / dark / glass, palettes extracted from its compiled assets); the first launch seeds Chinese or English from the OS language (everything non-Chinese gets English), and manual in-app switches are always respected afterwards.
 - **stdio bridge kept alongside**: a zero-TCP stdio JSON-RPC protocol layer (`bridge/`) remains available for programmatic access to DeepTutor capabilities — see the [protocol docs](docs/protocol.md).
-- **Clean lifecycle**: the embedded stack binds only to the loopback interface (ADR-0003); quitting the app gracefully stops every child process with no orphans.
+- **Clean lifecycle**: quitting the app gracefully stops every background process — nothing is left running.
 
 ## Install
 
@@ -44,7 +44,7 @@ First use requires configuring a model API key in DeepTutor's Settings before co
     DeepTutor Web (FastAPI + Next.js)
 ```
 
-Key decisions: [ADR-0001](docs/adr/0001-sidecar-stdio.md) (stdio bridge), [ADR-0002](docs/adr/0002-use-tauri.md) (choosing Tauri), [ADR-0003](docs/adr/0003-embedded-web-stack.md) (embedded web stack and the loopback exception). See the [architecture guide](docs/architecture.md) and the [packaging strategy](docs/packaging.md).
+Further details: [architecture guide](docs/architecture.md) and [packaging strategy](docs/packaging.md).
 
 ## Building from source
 
@@ -87,7 +87,7 @@ docs/          # architecture, protocol, packaging, and ADRs
 
 ## Security boundary
 
-- The embedded web stack binds only to `127.0.0.1` and is never exposed externally (the exception recorded in ADR-0003; the stdio bridge stays zero-TCP).
+- The embedded web stack binds only to `127.0.0.1` on your own machine and is never reachable from other devices.
 - The WebView renderer calls only allowlisted Tauri commands and holds no shell or subprocess capability.
 - DeepTutor is consumed as a pinned external wheel dependency; this repository contains none of its source, and upstream upgrades must pass compatibility testing.
 

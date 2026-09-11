@@ -6,7 +6,7 @@
 - **完整界面**：应用启动后由 Rust 核心拉起 `deeptutor start`（FastAPI 后端 + Next.js 前端），就绪后窗口自动进入 DeepTutor Web UI——聊天、知识库、可视化、设置等全部功能可用。
 - **主题与语言跟随**：启动加载页镜像 DeepTutor 的四套主题（snow / light / dark / glass，配色取自其编译产物）；首次启动按系统语言自动预置中文或英文（非中文一律英文），之后尊重应用内的手动切换。
 - **stdio bridge 并存**：保留零 TCP 的 stdio JSON-RPC 协议层（`bridge/`），用于编程式访问 DeepTutor 能力，见[协议文档](docs/protocol.md)。
-- **干净的生命周期**：内嵌栈只绑定回环地址（ADR-0003）；应用退出时优雅停止全部子进程，无孤儿进程。
+- **干净的生命周期**：退出应用时优雅停止全部后台进程，不遗留任何仍在运行的进程。
 
 ## 安装
 
@@ -44,7 +44,7 @@
     DeepTutor Web（FastAPI + Next.js）
 ```
 
-关键决策记录：[ADR-0001](docs/adr/0001-sidecar-stdio.md)（stdio bridge）、[ADR-0002](docs/adr/0002-use-tauri.md)（选用 Tauri）、[ADR-0003](docs/adr/0003-embedded-web-stack.md)（内嵌 Web 栈与回环例外）。详见[架构说明](docs/architecture.md)与[打包策略](docs/packaging.md)。
+更多细节见[架构说明](docs/architecture.md)与[打包策略](docs/packaging.md)。
 
 ## 从源码构建
 
@@ -87,7 +87,7 @@ docs/          # 架构、协议、打包与 ADR
 
 ## 安全边界
 
-- 内嵌 Web 栈仅绑定 `127.0.0.1`，不对外暴露（ADR-0003 记录的例外；stdio bridge 保持零 TCP）。
+- 内嵌 Web 栈仅绑定本机回环地址 `127.0.0.1`，网络上其他设备无法访问。
 - WebView 渲染层只调用白名单 Tauri commands，无 shell / 子进程权限。
 - DeepTutor 作为锁定版本的外部 wheel 依赖消费，本仓库不含其源码；上游升级须通过兼容性测试。
 
