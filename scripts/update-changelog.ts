@@ -209,8 +209,16 @@ function updateChangelog(cl: ChangelogSpec, lines: string[]): { released: boolea
   if (end === -1)
     end = fileLines.length
   const currentBody = fileLines.slice(start + 1, end)
-  const manualBody = currentBody.filter(l => l.trim() && l.trim() !== cl.placeholder)
-  const releaseManual = Boolean(releaseVersion) && manualBody.length > 0
+  // Hand-written prose keeps its interior blank lines (they separate groups);
+  // only leading/trailing blanks and placeholder lines are dropped.
+  // 手写正文保留内部空行 (它们分隔各分组), 仅去掉首尾空行与占位行。
+  const manualBody = [...currentBody]
+  while (manualBody.length && !manualBody[0].trim())
+    manualBody.shift()
+  while (manualBody.length && !manualBody[manualBody.length - 1].trim())
+    manualBody.pop()
+  const manualLines = manualBody.filter(l => l.trim() && l.trim() !== cl.placeholder)
+  const releaseManual = Boolean(releaseVersion) && manualLines.length > 0
   if (!lines.length && !releaseManual && !currentBody.some(l => l.trim() === cl.placeholder)) {
     console.error(`notice: no entries and ${cl.file} has manual content; leaving [Unreleased] as-is`)
     return { released: false, body: [] }
@@ -221,7 +229,7 @@ function updateChangelog(cl: ChangelogSpec, lines: string[]): { released: boolea
   // 落版本时保留手写内容, 并追加其中尚未包含的自动条目 —— 既不会让生成器
   // 丢掉人工整理的摘要, 也不会重复生成同一条目。
   const merged = lines.length && releaseManual
-    ? [...manualBody, '', ...subtractEntries(lines, manualBody)]
+    ? [...manualBody, '', ...subtractEntries(lines, manualLines)]
     : lines.length ? lines : manualBody
   const body = (lines.length || releaseManual) ? ['', ...merged] : ['', cl.placeholder]
   const date = new Date().toISOString().slice(0, 10)
