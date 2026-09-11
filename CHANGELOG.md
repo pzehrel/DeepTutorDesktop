@@ -7,10 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- Nothing notable yet.
-
-## [0.0.1] - 2026-09-11
-
 ### Added
 - **release:** automate bilingual changelog and adopt conventional commits (`befc703`)
 - **shell:** pin embedded stack to high loopback ports (`b24f816`)
@@ -29,9 +25,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Renamed the product to DeepTutor Desktop.
-
-### Fixed
-- **release:** reassemble wrapped zh-CN subjects (`2732d79`)
-- **release:** preserve blank lines inside hand-written changelog prose (`14b90b8`)
-- **release:** keep hand-written changelog prose and stdout clean (`145247b`)
-- **release:** publishing v0.0.1 was blocked by two changelog defects — the release tag counted as its own predecessor (empty commit range) and a hand-written `[Unreleased]` section refused to release (`98d83ef`)
