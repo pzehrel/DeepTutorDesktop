@@ -80,17 +80,19 @@ jobs:
         run: bash scripts/build-runtime.sh ${{ matrix.target }}
 
       - name: Build desktop bundle
-        # NO_STRIP keeps linuxdeploy from stripping the embedded runtime's
-        # ELF binaries (python/node); APPIMAGE_EXTRACT_AND_RUN sidesteps
-        # FUSE quirks on CI runners; --verbose surfaces linuxdeploy errors
-        # that the bundler otherwise swallows (tauri-apps/tauri#14796).
-        # NO_STRIP 阻止 linuxdeploy strip 内嵌 runtime 的 ELF 二进制
-        # (python/node); APPIMAGE_EXTRACT_AND_RUN 规避 CI runner 上的
-        # FUSE 问题; --verbose 暴露 bundler 默认吞掉的 linuxdeploy 报错。
+        # AppImage is disabled on CI: linuxdeploy dies without output even
+        # with libfuse2, NO_STRIP and APPIMAGE_EXTRACT_AND_RUN set
+        # (deb/rpm bundle fine; see tauri-apps/tauri#14796 and the
+        # in-progress bundler rewrite tauri-apps/tauri#12491). Re-enable by
+        # removing --bundles once the new bundler ships.
+        # CI 上禁用 AppImage: 即使设置了 libfuse2、NO_STRIP 与
+        # APPIMAGE_EXTRACT_AND_RUN, linuxdeploy 仍然无输出失败 (deb/rpm
+        # 打包正常; 见 tauri-apps/tauri#14796 与重写中的打包器
+        # tauri-apps/tauri#12491)。待新打包器发布后移除 --bundles 恢复。
         env:
           NO_STRIP: true
           APPIMAGE_EXTRACT_AND_RUN: '1'
-        run: pnpm build -- --verbose
+        run: pnpm build -- --verbose --bundles ${{ runner.os == 'Linux' && 'deb,rpm' || 'all' }}
 
       # Stage installers under explicit platform/arch names — Intel and
       # Apple Silicon macOS packages must never share a filename.
