@@ -11,9 +11,11 @@ name: watch-deeptutor
 #      leaves the feed untouched.
 #   3. On success, bump the shell's own semver patch (package.json,
 #      src-tauri/tauri.conf.json, src-tauri/Cargo.toml), repin
-#      DEEPTUTOR_VERSION, commit with a Conventional Commits subject, and push
-#      a `v*` tag. The existing build.yml tag pipeline then builds, generates
-#      the bilingual changelog, and publishes the GitHub Release unchanged.
+#      DEEPTUTOR_VERSION, commit with a Conventional Commits subject, push a
+#      `v*` tag, and then call build.yml as a reusable workflow. The call is
+#      what actually builds and publishes: a tag pushed with GITHUB_TOKEN does
+#      not trigger workflows, so relying on the push alone produced tags with
+#      no Release.
 #
 # 流程(纯 GitHub Actions + 脚本, 零 agent 参与):
 #   1. 每日轮询一次 PyPI 的最新 `deeptutor` 版本, 与 scripts/build-runtime.sh
@@ -22,8 +24,9 @@ name: watch-deeptutor
 #      门禁失败则开跟踪 issue, 发布链路保持不动。
 #   3. 通过后自增壳自身的 semver patch(package.json、src-tauri/
 #      tauri.conf.json、src-tauri/Cargo.toml), 重设 DEEPTUTOR_VERSION, 以
-#      Conventional Commits 主题提交并推送 `v*` tag。后续构建、双语
-#      changelog 与 GitHub Release 全部复用现有 build.yml 的 tag 流水线。
+#      Conventional Commits 主题提交、推送 `v*` tag, 随后以可复用 workflow
+#      方式调用 build.yml。真正完成构建与发布的是该调用: 用 GITHUB_TOKEN
+#      推送的 tag 不会触发 workflow, 仅靠 push 只会留下没有 Release 的 tag。
 #
 # Shell hotfix releases are out of scope: commit the fix manually, bump the
 # shell version manually, and push a `v*` tag by hand.
@@ -52,6 +55,8 @@ permissions:
 jobs:
   watch:
     runs-on: ubuntu-latest
+    outputs:
+      next: ${{ steps.bump.outputs.next }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -95,6 +100,7 @@ jobs:
         run: bash scripts/check-agent-compat.sh "${{ steps.candidate.outputs.version }}"
 
       - name: Bump shell version, repin deeptutor, tag
+        id: bump
         if: steps.candidate.outputs.skip != 'true'
         run: |
           VERSION="${{ steps.candidate.outputs.version }}"
@@ -140,6 +146,9 @@ jobs:
             -m "zh-CN: 升级内嵌 DeepTutor 至 ${VERSION}"
           git tag "v${NEXT}"
           git push origin HEAD:main "v${NEXT}"
+          # Hand the release tag to the reusable build pipeline below.
+          # 将发布 tag 交给下方的可复用构建流水线。
+          echo "next=${NEXT}" >> "$GITHUB_OUTPUT"
 
       # A failed gate is invisible from inside the app, so surface it as an
       # issue; duplicate titles keep the daily cron from spamming.
@@ -158,3 +167,18 @@ jobs:
               --title "$TITLE" \
               --body "The daily watch tried to package deeptutor ${VERSION} but scripts/check-agent-compat.sh failed. Re-run the [watch-deeptutor workflow](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/watch-deeptutor.yml) after the upstream fix. / 每日观察尝试打包 deeptutor ${VERSION}, 但兼容门禁失败。上游修复后请重跑 [watch-deeptutor 工作流](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/watch-deeptutor.yml)。"
           fi
+
+  # Build and publish through the shared pipeline. Calling it as a reusable
+  # workflow works with the default GITHUB_TOKEN, unlike a tag push made by
+  # that token — which is why the automated tag used to have no Release.
+  # 复用共享流水线完成构建与发布。以可复用 workflow 调用可正常工作于默认
+  # GITHUB_TOKEN, 而该 token 推送的 tag 不会触发 workflow —— 这正是过去自动
+  # 发布的 tag 没有 Release 的原因。
+  release:
+    needs: watch
+    if: needs.watch.outputs.next != ''
+    permissions:
+      contents: write
+    uses: ./.github/workflows/build.yml
+    with:
+      release_tag: v${{ needs.watch.outputs.next }}

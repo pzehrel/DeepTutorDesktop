@@ -1,5 +1,16 @@
 name: build
 
+# Release entry points:
+#   - a `v<version>` tag push from a human or a PAT (this file's own pipeline)
+#   - workflow_call from watch-deeptutor, whose tag push is made with
+#     GITHUB_TOKEN and therefore never triggers a workflow by itself — GitHub
+#     suppresses runs for events created with that token, which is why an
+#     automated tag used to appear without a Release.
+# 发布入口:
+#   - 人工或 PAT 推送 `v<version>` tag (走本文件的流水线)
+#   - 由 watch-deeptutor 通过 workflow_call 调用: 它用 GITHUB_TOKEN 推 tag,
+#     而 GitHub 会抑制该 token 产生的事件, 因此自动 tag 过去只有 tag 没有
+#     Release。
 on:
   push:
     branches: [main]
@@ -7,6 +18,12 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      release_tag:
+        description: Release tag to build and publish (e.g. v0.0.2)
+        required: true
+        type: string
 
 jobs:
   # Pushing a `v<version>` tag is the release action: this job writes the tag's
@@ -16,7 +33,7 @@ jobs:
   # 文件并提交到 main, 构建 job 随后构建该提交 —— 版本号无需手工修改。
   version:
     name: version
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_call'
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -39,7 +56,10 @@ jobs:
       - name: Write the tag version into every manifest
         id: bump
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          # A workflow_call supplies the tag as an input; a tag push uses the ref.
+          # workflow_call 由输入提供 tag; tag 推送则取自 ref。
+          TAG="${{ github.event_name == 'workflow_call' && inputs.release_tag || github.ref_name }}"
+          VERSION="${TAG#v}"
           node scripts/set-version.ts --guard "$VERSION"
           node scripts/set-version.ts "$VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -107,13 +127,14 @@ jobs:
           - {os: windows-latest, target: win32-x64, platform: windows-x64, bundles: 'nsis'}
     runs-on: ${{ matrix.os }}
     steps:
-      # On a tag the version commit lives on main, so build main rather than
-      # the tagged commit; ordinary pushes and PRs build their own ref.
-      # tag 推送时版本提交位于 main, 因此构建 main 而非 tag 提交;
-      # 普通 push 与 PR 仍构建各自 ref。
+      # On a release the version commit lives on main, so build main rather
+      # than the tagged commit (a workflow_call's ref is the caller's branch,
+      # which is main as well); ordinary pushes and PRs build their own ref.
+      # 发布时版本提交位于 main, 因此构建 main 而非 tag 提交 (workflow_call 的
+      # ref 是调用方分支, 同样是 main); 普通 push 与 PR 仍构建各自 ref。
       - uses: actions/checkout@v4
         with:
-          ref: ${{ startsWith(github.ref, 'refs/tags/v') && 'main' || github.ref }}
+          ref: ${{ (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_call') && 'main' || github.ref }}
 
       - uses: pnpm/action-setup@v4
 
@@ -399,7 +420,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_call'
     needs: [version, build]
     runs-on: ubuntu-latest
     permissions:
@@ -428,8 +449,10 @@ jobs:
       # 在两份 changelog 中落版本小节, 并捕获双语 release notes
       # 供发布页正文使用。
       - name: Update changelog
+        env:
+          TAG: ${{ github.event_name == 'workflow_call' && inputs.release_tag || github.ref_name }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${TAG#v}"
           node scripts/update-changelog.ts --release "$VERSION" > release-notes.md
 
       # Push the published changelog back to main so the repo copy stays
@@ -438,6 +461,8 @@ jobs:
       # 将落版后的 changelog 推回 main, 保持仓库内副本为权威版本;
       # 重跑 tag 且无变化时自动跳过。`[skip ci]` 阻止记账提交再次触发构建。
       - name: Commit changelog update
+        env:
+          TAG: ${{ github.event_name == 'workflow_call' && inputs.release_tag || github.ref_name }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -445,12 +470,16 @@ jobs:
           if git diff --cached --quiet; then
             echo "changelog already up to date"
           else
-            git commit -m "chore(release): publish changelog for ${GITHUB_REF_NAME} [skip ci]" \
-              -m "zh-CN: 发布 ${GITHUB_REF_NAME} 双语更新日志"
+            git commit -m "chore(release): publish changelog for ${TAG} [skip ci]" \
+              -m "zh-CN: 发布 ${TAG} 双语更新日志"
             git push origin HEAD:main
           fi
 
       - uses: softprops/action-gh-release@v2
         with:
+          # An explicit tag_name is required for workflow_call runs: the ref
+          # there is the caller's branch, not the release tag.
+          # workflow_call 必须显式给出 tag_name: 此时 ref 是调用方分支而非发布 tag。
+          tag_name: ${{ github.event_name == 'workflow_call' && inputs.release_tag || github.ref_name }}
           files: dist/*
           body_path: release-notes.md
