@@ -84,24 +84,39 @@ mkdir -p "$OUT"
 # ---- 1. Relocatable CPython from uv's python-build-standalone download ----
 # 从 uv 管理的 python-build-standalone 拷贝可重定位 CPython。
 uv python install "$PYTHON_VERSION"
-UV_PYTHON_DIR="${UV_PYTHON_DIR:-$HOME/.local/share/uv/python}"
+# uv's install root is platform-specific (~/.local/share/uv/python on Unix,
+# %APPDATA%\uv\python on Windows) — ask uv instead of hard-coding a path.
+# uv 的安装根目录随平台不同 (Unix 为 ~/.local/share/uv/python, Windows 为
+# %APPDATA%\uv\python), 直接向 uv 查询而非硬编码路径。
+UV_PYTHON_DIR="${UV_PYTHON_DIR:-$(uv python dir)}"
 # The listing entry may be a symlink (e.g. cpython-3.13 -> cpython-3.13.x);
-# pick the newest matching triple and dereference on copy (-L).
+# pick the newest matching triple and dereference on copy (-L). ls exits 2
+# when nothing matches, so swallow that to reach the friendly error below.
 # 目录项可能是符号链接 (如 cpython-3.13 -> cpython-3.13.x); 选取最新匹配的
-# triple, 拷贝时解引用 (-L)。
-PYTHON_SRC="$(ls -d "$UV_PYTHON_DIR"/cpython-"$PYTHON_VERSION".*-"$UV_TRIPLE" 2>/dev/null | sort -V | tail -1)"
+# triple, 拷贝时解引用 (-L)。无匹配时 ls 以码 2 退出, 吞掉以走到下方报错。
+PYTHON_SRC="$(ls -d "$UV_PYTHON_DIR"/cpython-"$PYTHON_VERSION".*-"$UV_TRIPLE" 2>/dev/null | sort -V | tail -1 || true)"
 if [ -z "$PYTHON_SRC" ]; then
-  echo "no uv-managed python for $UV_TRIPLE; is this runner the right arch?" >&2
+  echo "no uv-managed python for $UV_TRIPLE under $UV_PYTHON_DIR; is this runner the right arch?" >&2
   exit 3
 fi
 echo "==> python: $PYTHON_SRC"
-cp -RL "$PYTHON_SRC" "$OUT/python"
+# python-build-standalone install-only archives nest a top-level python/
+# directory on Windows; uv flattens it on Unix. Handle both layouts.
+# python-build-standalone 的 install-only 包在 Windows 下嵌套顶层 python/
+# 目录, Unix 下被 uv 展平。两种布局都兼容。
+PY_ROOT="$PYTHON_SRC"
+if is_windows && [ -d "$PYTHON_SRC/python" ]; then
+  PY_ROOT="$PYTHON_SRC/python"
+fi
+cp -RL "$PY_ROOT" "$OUT/python"
 # We own this copy; drop uv's externally-managed guard so pip installs work.
 # 该拷贝归本仓库构建所有, 移除 uv 的 externally-managed 标记。
 rm -f "$OUT"/python/lib/python3.*/EXTERNALLY-MANAGED
 
+# Windows interpreters live at the install root, Unix ones under bin/.
+# Windows 解释器位于安装根目录, Unix 的位于 bin/ 下。
 PYTHON_BIN="$OUT/python/bin/python3"
-is_windows && PYTHON_BIN="$OUT/python/bin/python.exe"
+is_windows && PYTHON_BIN="$OUT/python/python.exe"
 
 # ---- 2. deeptutor wheel as a pinned external dependency -------------------
 # 以锁定版本的外部依赖形式安装 deeptutor wheel。
