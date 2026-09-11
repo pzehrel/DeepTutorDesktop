@@ -96,11 +96,22 @@ function git(...args_: string[]): string {
   return execFileSync('git', args_, { cwd: root, encoding: 'utf8' }).trim()
 }
 
-/** Latest v* tag preceding HEAD, or null when none exists yet. */
-/** HEAD 之前最新的 v* tag, 尚不存在时返回 null。 */
-function lastReleaseTag(): string | null {
+/**
+ * Latest v* tag preceding HEAD, or null when none exists yet. The tag for the
+ * version currently being released is skipped: a release tag normally points
+ * at (or before) the commit being released, and counting it as the "last
+ * release" would leave an empty commit range and an empty changelog section.
+ *
+ * HEAD 之前最新的 v* tag, 尚不存在时返回 null。当前正在发布的版本对应的
+ * tag 会被跳过: 发布 tag 通常就指向 (或早于) 正在发布的提交, 若把它当作
+ * 「上次发布」, 提交区间与 changelog 小节都会是空的。
+ */
+function lastReleaseTag(excludeVersion?: string): string | null {
+  const excluded = excludeVersion ? `v${excludeVersion}` : undefined
   const tags = git('tag', '--list', 'v*', '--merged', 'HEAD', '--sort=-v:refname')
-  return tags ? tags.split('\n')[0] : null
+    .split('\n')
+    .filter(tag => tag && tag !== excluded)
+  return tags.length ? tags[0] : null
 }
 
 /**
@@ -112,8 +123,8 @@ function lastReleaseTag(): string | null {
  * 属于噪音类型(docs/build/ci/test/chore/style)的提交只计数并跳过,
  * 保持更新日志面向用户。
  */
-function collectCommits(): { entries: Commit[], skipped: { nonConventional: number, noise: number } } {
-  const tag = lastReleaseTag()
+function collectCommits(excludeVersion?: string): { entries: Commit[], skipped: { nonConventional: number, noise: number } } {
+  const tag = lastReleaseTag(excludeVersion)
   const range = tag ? `${tag}..HEAD` : 'HEAD'
   // \x1E separates records, \x00 separates hash/subject/body within one.
   const raw = execFileSync('git', ['log', '--format=%h%x00%s%x00%b%x1E', range], { cwd: root, encoding: 'utf8' })
@@ -173,17 +184,19 @@ function renderGroups(entries: Commit[], pick: (entry: Commit) => string, breaki
 
 /**
  * Rewrite the `[Unreleased]` section of one changelog file. Existing manual
- * prose is preserved unless the run has entries to substitute (so the initial
- * hand-written history survives until conventional commits exist). When
- * `releaseVersion` is set, the section becomes `[version] - date` and a fresh
- * placeholder `[Unreleased]` opens above it.
+ * prose is preserved unless the run has entries to substitute, or a release is
+ * being cut — in which case the hand-written section itself becomes the
+ * released version and the file gets a fresh placeholder `[Unreleased]`.
+ * Returns whether a version section was actually released, plus the body that
+ * went into it (used verbatim as the Release notes when there are no generated
+ * entries).
  *
- * 重写单个 changelog 文件的 `[Unreleased]` 小节。除非本次收集到了条目,
- * 已有手写内容保持不动(因此首次发布前的手写历史会保留)。指定
- * `releaseVersion` 时, 该小节落为 `[version] - date`, 并在其上方新开一个
- * 占位的 `[Unreleased]`。
+ * 重写单个 changelog 文件的 `[Unreleased]` 小节。除非本次收集到了条目、或正在
+ * 落版本发布, 已有手写内容保持不动 —— 落版本时手写小节本身即成为该版本内容,
+ * 文件上方新开占位 `[Unreleased]`。返回是否真的落了一个版本小节, 以及写入
+ * 其中的正文 (没有自动生成条目时直接用作 Release 正文)。
  */
-function updateChangelog(cl: ChangelogSpec, lines: string[]): boolean {
+function updateChangelog(cl: ChangelogSpec, lines: string[]): { released: boolean, body: string[] } {
   const path = join(root, cl.file)
   const content = readFileSync(path, 'utf8')
   const fileLines = content.split('\n')
@@ -196,14 +209,16 @@ function updateChangelog(cl: ChangelogSpec, lines: string[]): boolean {
   if (end === -1)
     end = fileLines.length
   const currentBody = fileLines.slice(start + 1, end)
-  if (!lines.length && !currentBody.some(l => l.trim() === cl.placeholder)) {
+  const manualBody = currentBody.filter(l => l.trim() && l.trim() !== cl.placeholder)
+  const releaseManual = Boolean(releaseVersion) && manualBody.length > 0
+  if (!lines.length && !releaseManual && !currentBody.some(l => l.trim() === cl.placeholder)) {
     console.error(`notice: no entries and ${cl.file} has manual content; leaving [Unreleased] as-is`)
-    return false
+    return { released: false, body: [] }
   }
-  const body = lines.length ? ['', ...lines] : ['', cl.placeholder]
+  const body = lines.length ? ['', ...lines] : releaseManual ? ['', ...manualBody] : ['', cl.placeholder]
   const date = new Date().toISOString().slice(0, 10)
   const rebuilt = releaseVersion
-    ? ['## [Unreleased]', '', cl.placeholder, '', `## [${releaseVersion}] - ${date}`, ...body]
+    ? ['## [Unreleased]', '', cl.placeholder, '', `## [${releaseVersion}] - ${date}`, ...body, '']
     : ['## [Unreleased]', ...body]
   fileLines.splice(start, end - start, ...rebuilt)
   const out = fileLines.join('\n').replace(/\n{3,}/g, '\n\n')
@@ -211,7 +226,7 @@ function updateChangelog(cl: ChangelogSpec, lines: string[]): boolean {
     writeFileSync(path, `${out.trimEnd()}\n`)
     console.log(`updated ${cl.file}`)
   }
-  return true
+  return { released: lines.length > 0 || releaseManual, body: body.filter(l => l.trim()) }
 }
 
 /** Bilingual markdown body for the GitHub Release page. */
@@ -222,10 +237,10 @@ function renderNotes(en: Commit[], zh: Commit[]): string {
   return [
     ...enLines.length ? [`## English`, '', ...enLines] : [],
     ...zhLines.length ? [`## 中文`, '', ...zhLines] : [],
-  ].join('\n\n')
+  ].join('\n\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
-const { entries, skipped } = collectCommits()
+const { entries, skipped } = collectCommits(releaseVersion)
 if (skipped.nonConventional)
   console.error(`notice: ${skipped.nonConventional} non-conventional commit(s) excluded`)
 if (skipped.noise)
@@ -237,10 +252,23 @@ if (notesOnly) {
 else {
   const results = changelogs.map((cl, i) =>
     updateChangelog(cl, renderGroups(entries, i === 0 ? e => e.en : e => e.zh, cl.breaking, cl.groups)))
-  if (releaseVersion && !results.some(Boolean)) {
+  if (releaseVersion && !results.some(r => r.released)) {
     console.error('error: nothing to release — [Unreleased] has no entries in either changelog')
     process.exit(1)
   }
-  if (releaseVersion)
-    console.log(renderNotes(entries, entries))
+  if (releaseVersion) {
+    // With generated entries the notes are rendered from commits; for a
+    // hand-written [Unreleased] section the released body is the notes.
+    // 有自动生成条目时由提交渲染正文; 手写的 [Unreleased] 小节则以落版正文
+    // 作为 Release 正文。
+    if (entries.length) {
+      console.log(renderNotes(entries, entries))
+    }
+    else {
+      console.log(results
+        .map((r, i) => r.body.length ? `## ${i === 0 ? 'English' : '中文'}\n\n${r.body.join('\n')}` : '')
+        .filter(Boolean)
+        .join('\n\n'))
+    }
+  }
 }
