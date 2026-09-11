@@ -73,16 +73,23 @@ jobs:
           # 保证内嵌 Python runtime 与宿主架构一致。macos-13 已于
           # 2025-12-04 退役, macos-15-intel 是标准 x86_64 runner 的
           # 替代标签。
-          - {os: macos-14, target: darwin-arm64, platform: macos-apple-silicon}
-          - {os: macos-15-intel, target: darwin-x64, platform: macos-intel}
+          # `bundles` holds the per-platform bundle targets passed to the CLI.
+          # Windows ships the NSIS setup.exe only: the MSI is redundant and
+          # spent ~8 minutes per run compressing the ~1GB embedded runtime.
+          # macOS keeps both the .app and the .dmg.
+          # `bundles` 为传给 CLI 的各平台打包目标。Windows 只发 NSIS 的
+          # setup.exe: MSI 与之重复, 且每次为压缩约 1GB 的内嵌 runtime
+          # 多花约 8 分钟。macOS 保留 .app 与 .dmg 两者。
+          - {os: macos-14, target: darwin-arm64, platform: macos-apple-silicon, bundles: 'app,dmg'}
+          - {os: macos-15-intel, target: darwin-x64, platform: macos-intel, bundles: 'app,dmg'}
           # Linux builds are paused for now per product decision; re-add
-          # `- {os: ubuntu-22.04, target: linux-x64, platform: linux-x64}`
+          # `- {os: ubuntu-22.04, target: linux-x64, platform: linux-x64, bundles: 'deb,rpm'}`
           # to resume (deb/rpm bundling worked; only AppImage was blocked,
           # see the note near the build step).
           # Linux 构建暂缓 (产品决定); 恢复时重新添加
-          # `- {os: ubuntu-22.04, target: linux-x64, platform: linux-x64}`
+          # `- {os: ubuntu-22.04, target: linux-x64, platform: linux-x64, bundles: 'deb,rpm'}`
           # 即可 (deb/rpm 打包此前正常, 仅 AppImage 受阻, 见构建步骤注释)。
-          - {os: windows-latest, target: win32-x64, platform: windows-x64}
+          - {os: windows-latest, target: win32-x64, platform: windows-x64, bundles: 'nsis'}
     runs-on: ${{ matrix.os }}
     steps:
       # On a tag the version commit lives on main, so build main rather than
@@ -142,22 +149,33 @@ jobs:
         run: bash scripts/build-runtime.sh ${{ matrix.target }}
 
       - name: Build desktop bundle
+        # macOS dmg creation fails intermittently on GitHub runners
+        # ("failed to run bundle_dmg.sh"); the same commit bundles fine
+        # locally and on a re-run, so retry the bundling step after clearing
+        # the bundle output. Cargo and uv caches make a retry cheap.
+        # macOS 的 dmg 在 GitHub runner 上偶发失败
+        # ("failed to run bundle_dmg.sh"); 同一提交在本地与重跑时都能成功,
+        # 因此清空打包输出后重试。cargo 与 uv 缓存让重试成本很低。
+        #
         # pnpm's script forwarding passes the -- separator through to the
         # tauri CLI, which then hands the flags to cargo; invoke tauri
-        # directly via pnpm exec instead of the "build" script. No --bundles
-        # override: the flag only accepts per-platform values (e.g. msi/nsis
-        # on Windows), so let tauri.conf.json's "targets": "all" apply. When
-        # the Linux job returns, restrict it with `--bundles deb,rpm` —
-        # AppImage/linuxdeploy fails on CI (tauri-apps/tauri#14796, rewrite
-        # in progress tauri-apps/tauri#12491).
+        # directly via pnpm exec instead of the "build" script. --bundles
+        # only accepts per-platform values, hence the matrix field.
         # pnpm 的脚本转发会把 -- 分隔符一并传给 tauri CLI, 导致标志被
         # 转交 cargo; 改用 pnpm exec 直接调用 tauri 而不走 build 脚本。
-        # 不覆盖 --bundles: 该标志只接受各平台自身的目标值 (如 Windows
-        # 的 msi/nsis), 交由 tauri.conf.json 的 "targets": "all" 生效。
-        # Linux job 恢复时需限制为 `--bundles deb,rpm` —— AppImage/
-        # linuxdeploy 在 CI 上失败 (tauri-apps/tauri#14796, 打包器重写中
-        # tauri-apps/tauri#12491)。
-        run: pnpm exec tauri build
+        # --bundles 只接受各平台自身的目标值, 因此由 matrix 字段提供。
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if pnpm exec tauri build --bundles ${{ matrix.bundles }}; then
+              exit 0
+            fi
+            echo "::warning::bundling attempt $attempt failed"
+            rm -rf src-tauri/target/release/bundle
+            sleep 15
+          done
+          echo "::error::bundling failed after 3 attempts"
+          exit 1
 
       # Stage installers under explicit platform/arch names — Intel and
       # Apple Silicon macOS packages must never share a filename.
