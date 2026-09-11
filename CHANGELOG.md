@@ -7,8 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- Nothing notable yet.
-
+### Fixed
+- **packaging:** ad-hoc sign the macOS bundle for Gatekeeper (`c2bbc3c`)
+- **shell:** keep the bytecode cache out of the signed bundle (`e0ff98d`)
+- **shell:** read the ready port from the launcher's marker (`811e96d`)
 ## [0.0.1] - 2026-09-11
 
 ### Added
