@@ -148,10 +148,27 @@ jobs:
         shell: bash
         run: bash scripts/build-runtime.sh ${{ matrix.target }}
 
+      # The Intel dmg attempt died in `hdiutil detach` with "timeout for
+      # DiskArbitration expired / drive not detached": Spotlight indexes the
+      # freshly mounted volume and keeps it busy. Turn indexing off for the
+      # job and drop the indexer processes before bundling.
+      # Intel 的 dmg 尝试死在 `hdiutil detach`: "timeout for DiskArbitration
+      # expired / drive not detached" —— Spotlight 会对刚挂载的卷建索引从而
+      # 占住卷。打包前关闭索引并结束索引进程。
+      - name: Disable Spotlight indexing (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          sudo mdutil -a -i off || true
+          sudo mdutil -a -E || true
+          sudo pkill -9 -x mds 2>/dev/null || true
+          sudo pkill -9 -x mdworker 2>/dev/null || true
+          sudo pkill -9 -x mds_stores 2>/dev/null || true
+
       - name: Build desktop bundle
         # macOS dmg creation misbehaves on GitHub runners: on Apple Silicon it
-        # usually succeeds in ~3 minutes, while the Intel runner spends ~18
-        # minutes in bundle_dmg.sh and then fails. tauri's `output_ok()` helper
+        # usually succeeds in a few minutes, while the Intel runner spends
+        # ~10+ minutes creating the raw image of the ~890MB / 68k-file .app and
+        # then died in hdiutil detach. tauri's `output_ok()` helper
         # logs the script's stdout/stderr line by line at debug level and then
         # throws those lines away, reporting only "failed to run
         # bundle_dmg.sh" — hence RUST_LOG below to capture the script's own
