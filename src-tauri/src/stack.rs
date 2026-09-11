@@ -3,13 +3,13 @@
 //! 内嵌 DeepTutor 全栈运行时管理。
 //!
 //! The desktop shell ships the pinned `deeptutor` wheel inside an embedded
-//! Python runtime plus a Node.js runtime (see `docs/packaging.md`). This module
+//! Python runtime plus a Node.js runtime. This module
 //! launches `deeptutor start` against a per-application home directory, waits
 //! for the packaged Next.js frontend to answer on the loopback interface, and
 //! tells the renderer to navigate to it. The renderer never spawns processes
 //! or touches the runtime itself.
 //!
-//! 桌面壳按 `docs/packaging.md` 将锁定版本的 `deeptutor` wheel 与 Python、
+//! 桌面壳将锁定版本的 `deeptutor` wheel 与 Python、
 //! Node.js 运行时一同分发。本模块在应用数据目录下启动 `deeptutor start`,
 //! 等待内置 Next.js 前端在回环地址就绪后, 通知 Renderer 跳转过去。
 //! Renderer 不创建进程, 也不直接接触运行时。
@@ -17,11 +17,11 @@
 //! Note: unlike the stdio bridge (`bridge.rs`), the full web UI requires the
 //! backend/frontend pair that only speak HTTP. Both bind to the loopback
 //! interface on ports recorded in the home directory's `system.json`; this is
-//! the documented exception recorded in ADR-0003.
+//! the sole permitted exception to the zero-TCP rule.
 //!
 //! 说明: 与 stdio bridge (`bridge.rs`) 不同, 完整 Web UI 依赖只能讲 HTTP 的
 //! 前后端。两者都绑定在回环地址, 端口记录在 home 目录的 `system.json`;
-//! 这是 ADR-0003 记录的已批准例外。
+//! 这是零 TCP 原则下唯一允许的例外。
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;

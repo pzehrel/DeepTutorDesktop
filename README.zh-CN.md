@@ -19,7 +19,7 @@
 - **内嵌全栈** — python-build-standalone CPython + 锁定版本的 `deeptutor` PyPI wheel（自带 Next.js 前端产物）+ Node.js 官方二进制，全部作为应用资源随包分发；不复制、不修改上游源码。
 - **完整界面** — 应用启动后由 Rust 核心拉起 `deeptutor start`（FastAPI 后端 + Next.js 前端），就绪后窗口自动进入 DeepTutor Web UI。
 - **主题与语言跟随** — 启动加载页镜像 DeepTutor 的四套主题（snow / light / dark / glass，配色取自其编译产物）；首次启动按系统语言自动预置中文或英文（非中文一律英文），之后尊重应用内的手动切换。
-- **stdio bridge 并存** — 保留零 TCP 的 stdio JSON-RPC 协议层（`bridge/`），用于编程式访问 DeepTutor 能力，见[协议文档](docs/protocol.zh-CN.md)。
+- **stdio bridge 并存** — 保留零 TCP 的 stdio JSON-RPC 协议层（`bridge/`），用于编程式访问 DeepTutor 能力。
 - **干净的生命周期** — 退出应用时优雅停止全部后台进程，不遗留任何仍在运行的进程。
 
 ## 安装
@@ -43,8 +43,6 @@
 ```bash
 xattr -rd com.apple.quarantine /Applications/DeepTutorDesktop.app
 ```
-
-完整说明见 [docs/packaging.zh-CN.md 第 7 节](docs/packaging.zh-CN.md#7-macos-签名与-gatekeeper)。
 
 ## 从源码构建
 
@@ -82,7 +80,6 @@ runtime/       # 内嵌 runtime 构建产物（gitignore，不提交）
 scripts/       # runtime 构建、产物重命名脚本
 src-tauri/     # Tauri/Rust 主工程（栈生命周期 + bridge + IPC）
 schemas/       # bridge 协议 v1 JSON Schema
-docs/          # 架构、协议、打包与 ADR
 .github/       # CI 工作流
 ```
 

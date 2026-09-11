@@ -401,13 +401,13 @@ fn spawn_bridge(
 /// 1. `DEEPTUTOR_BRIDGE` (+ optional `DEEPTUTOR_BRIDGE_ARGS`) override;
 /// 2. the repository's `bridge/.venv` interpreter (development mode).
 ///
-/// Packaged builds later replace this with the bundled sidecar binary from
-/// `docs/packaging.md` (Tauri `externalBin`).
+/// Packaged builds later replace this with the bundled sidecar binary (Tauri
+/// `externalBin`).
 ///
 /// Resolve the bridge executable for development or packaged runs.
 ///
 /// 解析 bridge 可执行文件: 优先环境变量覆盖, 其次开发模式下的仓库 venv;
-/// 打包模式后续接入 `docs/packaging.md` 定义的 `externalBin` sidecar。
+/// 打包模式后续接入 `externalBin` 形式的 sidecar。
 fn resolve_bridge_command() -> (PathBuf, Vec<String>) {
     if let Ok(program) = env::var("DEEPTUTOR_BRIDGE") {
         if !program.trim().is_empty() {

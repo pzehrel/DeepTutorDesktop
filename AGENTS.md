@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 This guide applies repository-wide. Keep changes scoped to the relevant package and
-follow the architecture in `docs/`. Chinese translation:
+follow the module boundaries described below. Chinese translation:
 [AGENTS.zh-CN.md](AGENTS.zh-CN.md).
 
 ## Project Structure & Module Organization
@@ -10,7 +10,6 @@ follow the architecture in `docs/`. Chinese translation:
 - `src-tauri/` contains the Tauri 2 Rust shell, capabilities, and icons.
 - `bridge/` contains the Python stdio JSON-RPC package and tests (`bridge/src/`, `bridge/tests/`).
 - `schemas/bridge/v1/` stores versioned protocol schemas; update these with protocol changes.
-- `docs/` contains architecture, packaging, protocol, and ADR documentation.
 - `runtime/` is a tracked placeholder; do not commit packaged runtimes, wheels, or user data.
 
 ## Build, Test, and Development Commands
@@ -59,6 +58,6 @@ packaging behavior.
 ## Security & Configuration Tips
 
 Preserve the stdio/NDJSON boundary: protocol messages belong on bridge stdout and diagnostics on
-stderr. Do not bind anything beyond the loopback interface (the embedded web stack's
-loopback exception is governed by ADR-0003), do not expose arbitrary shell access to the
+stderr. Do not bind anything beyond the loopback interface (the embedded web stack's loopback
+binding is the sole permitted exception), do not expose arbitrary shell access to the
 renderer, and do not commit secrets, signing files, or packaged runtime artifacts.

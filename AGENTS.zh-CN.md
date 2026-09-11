@@ -1,6 +1,6 @@
 # 仓库指南
 
-本指南适用于整个仓库。将更改限制在相关包内，并遵循 `docs/` 中的架构说明。供人工审阅的中文翻译就是本文件；英文规范见
+本指南适用于整个仓库。将更改限制在相关包内，并遵循下文描述的模块边界。供人工审阅的中文翻译就是本文件；英文规范见
 [AGENTS.md](AGENTS.md)。
 
 ## 项目结构与模块组织
@@ -9,7 +9,6 @@
 - `src-tauri/` 包含 Tauri 2 Rust shell、capabilities 和图标。
 - `bridge/` 包含 Python stdio JSON-RPC 包和测试（`bridge/src/`、`bridge/tests/`）。
 - `schemas/bridge/v1/` 存放版本化协议 schema；更改协议时同步更新。
-- `docs/` 包含架构、打包、协议和 ADR 文档。
 - `runtime/` 是受 Git 跟踪的占位目录；不要提交已打包的 runtime、wheel 或用户数据。
 
 ## 构建、测试与开发命令
@@ -40,4 +39,4 @@
 
 ## 安全与配置提示
 
-保持 stdio/NDJSON 边界：协议消息写入 bridge stdout，诊断信息写入 stderr。不要绑定回环地址以外的接口（内嵌 Web 栈的回环例外由 ADR-0003 约束），不要向渲染器开放任意 shell 权限，也不要提交机密信息、签名文件或已打包的 runtime 产物。
+保持 stdio/NDJSON 边界：协议消息写入 bridge stdout，诊断信息写入 stderr。不要绑定回环地址以外的接口（内嵌 Web 栈绑定回环地址是唯一允许的例外），不要向渲染器开放任意 shell 权限，也不要提交机密信息、签名文件或已打包的 runtime 产物。

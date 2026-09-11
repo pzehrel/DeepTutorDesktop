@@ -19,7 +19,7 @@ Install a single `.dmg` / `.exe` — no Python, Node.js, or DeepTutor preinstall
 - **Embedded full stack** — python-build-standalone CPython, a pinned `deeptutor` PyPI wheel (which ships the built Next.js frontend), and an official Node.js binary, all bundled as application resources. Upstream source is never copied or modified.
 - **The complete interface** — on launch the Rust core starts `deeptutor start` (FastAPI backend + Next.js frontend) and, once it is ready, navigates the window into the DeepTutor web UI.
 - **Theme and language follow** — the boot loader mirrors DeepTutor's four themes (snow / light / dark / glass, palettes extracted from its compiled assets); first launch seeds Chinese or English from the OS language (everything non-Chinese gets English), and manual in-app switches are always respected afterwards.
-- **stdio bridge kept alongside** — a zero-TCP stdio JSON-RPC protocol layer (`bridge/`) remains available for programmatic access; see the [protocol docs](docs/protocol.md).
+- **stdio bridge kept alongside** — a zero-TCP stdio JSON-RPC protocol layer (`bridge/`) remains available for programmatic access.
 - **Clean lifecycle** — quitting the app gracefully stops every background process; nothing is left running.
 
 ## Install
@@ -43,8 +43,6 @@ Releases built before bundle signing was added have no valid signature at all an
 ```bash
 xattr -rd com.apple.quarantine /Applications/DeepTutorDesktop.app
 ```
-
-See [docs/packaging.md §7](docs/packaging.md#7-macos-code-signing-and-gatekeeper) for the full explanation.
 
 ## Building from source
 
@@ -82,7 +80,6 @@ runtime/       # embedded runtime build output (gitignored, never committed)
 scripts/       # runtime build and bundle-rename scripts
 src-tauri/     # Tauri/Rust core (stack lifecycle + bridge + IPC)
 schemas/       # bridge protocol v1 JSON Schemas
-docs/          # architecture, protocol, packaging, and ADRs
 .github/       # CI workflows
 ```
 

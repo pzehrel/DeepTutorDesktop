@@ -3,7 +3,7 @@
 # 构建单个目标平台的内嵌 DeepTutor runtime。
 #
 # Inputs are pinned, external, versioned dependencies — no upstream source is
-# copied into this repository (see docs/adr/0003-embedded-web-stack.md):
+# copied into this repository:
 #   - python-build-standalone CPython (via uv's managed downloads)
 #   - deeptutor==<DEEPTUTOR_VERSION> from PyPI (wheel, includes deeptutor_web)
 #   - Node.js official binary archive
@@ -18,8 +18,7 @@
 # Run on a runner matching the target platform/architecture. Supported targets:
 #   darwin-arm64 | darwin-x64 | linux-x64 | win32-x64
 #
-# 构建输入均为锁定版本的外部依赖, 不拷贝上游源码 (见
-# docs/adr/0003-embedded-web-stack.md)。需要在目标平台/架构一致的机器上运行。
+# 构建输入均为锁定版本的外部依赖, 不拷贝上游源码。需要在目标平台/架构一致的机器上运行。
 # 规范目录 runtime/<target>/ 保留供检查; 实际打包读取 runtime/current。
 
 set -euo pipefail
