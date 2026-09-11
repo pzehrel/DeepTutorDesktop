@@ -144,11 +144,11 @@ rm -f "$OUT/$NODE_ARCHIVE"
 # ---- 4. Publish the uniform path consumed by tauri.conf.json -------------
 # 生成 tauri.conf.json 引用的统一路径 runtime/current。
 rm -rf "$CURRENT"
-if is_windows; then
-  powershell -NoProfile -Command "Copy-Item -Recurse -Force '$OUT' '$CURRENT'"
-else
-  cp -RL "$OUT" "$CURRENT"
-fi
+# Use Git Bash cp on Windows too: PowerShell's Copy-Item cannot consume the
+# POSIX-style paths (/d/a/...) this script produces.
+# Windows 下同样用 Git Bash 的 cp: PowerShell 的 Copy-Item 无法解析本脚本
+# 生成的 POSIX 风格路径 (/d/a/...)。
+cp -RL "$OUT" "$CURRENT"
 
 du -sh "$OUT/python" "$OUT/node" "$CURRENT"
 echo "==> done: $CURRENT (from $OUT)"
