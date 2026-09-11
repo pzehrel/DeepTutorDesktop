@@ -1,0 +1,227 @@
+name: macos-x64-dmg
+
+# Experimental pipeline for the macOS x64 (Intel) dmg problem, isolated from the
+# release flow in build.yml: it never version-bumps, never publishes a Release,
+# and only produces artifacts for inspection. build.yml fires on main/tags, so
+# this branch's pushes cannot disturb it.
+# 针对 macOS x64 (Intel) dmg 问题的实验流水线, 与 build.yml 的发布流程隔离:
+# 不写版本号、不发布 Release, 只产出供检查的 artifact。build.yml 只在
+# main/tag 上触发, 因此本分支的推送不会影响它。
+on:
+  push:
+    branches: [fix/macos-x64-dmg]
+  pull_request:
+    branches: [fix/macos-x64-dmg]
+  workflow_dispatch:
+
+jobs:
+  dmg:
+    name: macos-x64 dmg
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # Same uv cache rationale as build.yml: reuse the CPython archive and the
+      # 161-wheel dependency tree across runs of this branch.
+      # 与 build.yml 相同的 uv 缓存理由: 让本分支多次运行复用 CPython 压缩包
+      # 与 161 个 wheel 的依赖树。
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          # PRs only restore; pushes of this branch save so the next attempt
+          # reuses the ~600-crate build.
+          # PR 只恢复缓存; 本分支的推送会保存, 供下次尝试复用约 600 个
+          # crate 的编译产物。
+          save-if: ${{ github.event_name != 'pull_request' }}
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build embedded runtime (darwin-x64)
+        shell: bash
+        run: bash scripts/build-runtime.sh darwin-x64
+
+      # Spotlight indexes freshly mounted dmg volumes and keeps them busy, which
+      # is the suspected trigger of the historical `hdiutil detach` hangs.
+      # Spotlight 会对刚挂载的 dmg 卷建索引并占住卷, 这是历史上
+      # `hdiutil detach` 卡死的疑似诱因。
+      - name: Disable Spotlight indexing
+        run: |
+          sudo mdutil -a -i off || true
+          sudo mdutil -a -E || true
+          sudo pkill -9 -x mds 2>/dev/null || true
+          sudo pkill -9 -x mdworker 2>/dev/null || true
+          sudo pkill -9 -x mds_stores 2>/dev/null || true
+
+      # Two-stage strategy:
+      #   1. Tauri's own dmg bundling (fancy window layout), watchdogged and
+      #      retried once — the known failure mode is a multi-minute stall in
+      #      `hdiutil detach` ("timeout for DiskArbitration expired") on the
+      #      ~890MB / 68k-file .app.
+      #   2. Fallback that sidesteps bundle_dmg.sh entirely: `hdiutil create
+      #      -srcfolder -format UDZO` builds a compressed image from the .app
+      #      WITHOUT ever attaching it, so there is no volume to detach and the
+      #      failing code path is never reached. The image loses the custom
+      #      installer window layout but carries the identical payload.
+      # 两段式策略:
+      #   1. 先走 Tauri 自带的 dmg 打包 (带自定义窗口布局), 加看门狗并重试
+      #      一次 —— 已知失败模式是这个约 890MB/6.8 万文件的 .app 在
+      #      `hdiutil detach` 上卡死数分钟 ("timeout for DiskArbitration
+      #      expired")。
+      #   2. 兜底方案完全绕开 bundle_dmg.sh: `hdiutil create -srcfolder
+      #      -format UDZO` 直接从 .app 生成压缩镜像, 全程不挂载卷, 因此没有
+      #      可供 detach 卡死的路径。镜像会失去自定义安装窗口布局, 但载荷
+      #      完全相同。
+      - name: "Build dmg (stage 1: tauri bundler, stage 2: hdiutil fallback)"
+        id: dmg
+        shell: bash
+        env:
+          RUST_LOG: tauri_bundler=debug
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          DMG_OUT="packages/DeepTutorDesktop_${VERSION}_macos-x64.dmg"
+          mkdir -p packages bundling-logs
+
+          ATTEMPT_TIMEOUT=2700
+          KILL_GRACE=60
+          ATTEMPTS=2
+
+          cleanup() {
+            pkill -f bundle_dmg.sh 2>/dev/null || true
+            pkill -f 'cargo-tauri|tauri\.js' 2>/dev/null || true
+            pkill -f 'diskimages-helper|copy-helper' 2>/dev/null || true
+            if command -v hdiutil >/dev/null 2>&1; then
+              devs=$(hdiutil info 2>/dev/null | awk '
+                /^image-path/ { img = $0 }
+                /^\/dev\/disk/ && img ~ /bundle\/dmg/ { print $1 }
+              ' | sort -u)
+              for dev in $devs; do
+                hdiutil detach -force "$dev" >/dev/null 2>&1 || true
+              done
+            fi
+          }
+
+          build_with_watchdog() {
+            # Same watchdog/heartbeat contract as build.yml: SIGTERM at the
+            # timeout, SIGKILL after the grace period, heartbeat every 5 min.
+            # 与 build.yml 相同的看门狗/心跳约定: 超时先 SIGTERM, 宽限后
+            # SIGKILL, 每 5 分钟输出一次心跳。
+            local log="$1"; shift
+            : > "$log"
+            pnpm exec tauri build "$@" > "$log" 2>&1 &
+            local pid=$!
+            local started=$SECONDS
+            (
+              sleep "$ATTEMPT_TIMEOUT"
+              kill -TERM "$pid" 2>/dev/null || exit 0
+              sleep "$KILL_GRACE"
+              kill -KILL "$pid" 2>/dev/null || true
+              pkill -KILL -f 'cargo-tauri|tauri\.js' 2>/dev/null || true
+              pkill -KILL -f 'bundle_dmg.sh' 2>/dev/null || true
+            ) &
+            local wd=$!
+            (
+              while sleep 300; do
+                printf '%s still running (%ss); last line: %s\n' \
+                  "$(date -u +%H:%M:%S)" "$((SECONDS - started))" \
+                  "$(tail -n 1 "$log" 2>/dev/null)"
+              done
+            ) &
+            local hb=$!
+            local status=0
+            wait "$pid" || status=$?
+            kill "$wd" "$hb" 2>/dev/null || true
+            wait "$wd" 2>/dev/null || true
+            wait "$hb" 2>/dev/null || true
+            return "$status"
+          }
+
+          # ---- Stage 1: tauri's dmg bundling, two watchdogged attempts ----
+          # ---- 阶段 1: Tauri 自带 dmg 打包, 两次带看门狗的尝试 ----
+          stage1_ok=0
+          for ((attempt = 1; attempt <= ATTEMPTS; attempt++)); do
+            if build_with_watchdog "bundling-logs/attempt-$attempt.log" \
+              --bundles app,dmg; then
+              echo "tauri dmg succeeded on attempt $attempt"
+              stage1_ok=1
+              break
+            fi
+            status=$?
+            echo "::warning::tauri dmg attempt $attempt failed (exit $status)"
+            if [ -f src-tauri/target/release/bundle/dmg/bundle_dmg.sh ]; then
+              cp src-tauri/target/release/bundle/dmg/bundle_dmg.sh \
+                "bundling-logs/attempt-$attempt.bundle_dmg.sh" || true
+            fi
+            echo "::group::attempt $attempt output (tail)"
+            tail -n 120 "bundling-logs/attempt-$attempt.log" || true
+            echo "::endgroup::"
+            cleanup
+            sleep 15
+          done
+
+          shopt -s nullglob
+          if [ "$stage1_ok" -eq 1 ]; then
+            for f in src-tauri/target/release/bundle/dmg/*.dmg; do
+              cp "$f" "$DMG_OUT"
+              echo "stage=tauri-bundler" >> "$GITHUB_OUTPUT"
+              exit 0
+            done
+          fi
+
+          # ---- Stage 2: app-only build + attach-free hdiutil create ----
+          # ---- 阶段 2: 仅构建 app, 再用不挂载卷的 hdiutil create ----
+          echo "::warning::falling back to attach-free hdiutil create"
+          build_with_watchdog "bundling-logs/fallback-app.log" --bundles app
+          app_status=$?
+          if [ "$app_status" -ne 0 ]; then
+            echo "::error::app-only build failed (exit $app_status)"
+            tail -n 120 "bundling-logs/fallback-app.log" || true
+            exit 1
+          fi
+          APP="src-tauri/target/release/bundle/macos/DeepTutorDesktop.app"
+          # -srcfolder + UDZO compresses straight from the folder: hdiutil never
+          # attaches the image, so the detach hang cannot occur.
+          # -srcfolder 加 UDZO 直接从目录压缩: hdiutil 全程不挂载镜像,
+          # 因此不可能发生 detach 卡死。
+          if hdiutil create -volname "DeepTutorDesktop" -format UDZO -ov \
+            -srcfolder "$APP" "$DMG_OUT" 2> "bundling-logs/fallback-dmg.log"; then
+            echo "stage=hdiutil-fallback" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "::error::hdiutil fallback failed"
+          tail -n 120 "bundling-logs/fallback-dmg.log" || true
+          exit 1
+
+      - name: Verify dmg
+        shell: bash
+        run: |
+          ls -lh packages/
+          # verify that the image is a valid, mountable compressed dmg
+          # 校验镜像是有效、可挂载的压缩 dmg
+          hdiutil imageinfo packages/*.dmg | head -n 20
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DeepTutorDesktop-macos-x64-dmg
+          path: packages/*
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-x64-dmg-diagnostics
+          path: bundling-logs/
+          if-no-files-found: ignore
