@@ -110,8 +110,10 @@ if is_windows && [ -d "$PYTHON_SRC/python" ]; then
 fi
 cp -RL "$PY_ROOT" "$OUT/python"
 # We own this copy; drop uv's externally-managed guard so pip installs work.
+# Unix stores the marker in lib/python3.x/, Windows in Lib/.
 # 该拷贝归本仓库构建所有, 移除 uv 的 externally-managed 标记。
-rm -f "$OUT"/python/lib/python3.*/EXTERNALLY-MANAGED
+# Unix 下标记位于 lib/python3.x/, Windows 下位于 Lib/。
+rm -f "$OUT"/python/lib/python3.*/EXTERNALLY-MANAGED "$OUT"/python/Lib/EXTERNALLY-MANAGED
 
 # Windows interpreters live at the install root, Unix ones under bin/.
 # Windows 解释器位于安装根目录, Unix 的位于 bin/ 下。
