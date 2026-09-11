@@ -1,23 +1,23 @@
-# Runtime 与 Tauri 打包策略
+# Runtime and Tauri packaging strategy
 
-## 1. 构建输入
+## 1. Build inputs
 
-每个目标平台单独构建一个 runtime artifact，由 `scripts/build-runtime.sh <target>` 在**与目标架构一致的机器**上产出：
+Each target platform builds its own runtime artifact, produced by `scripts/build-runtime.sh <target>` on a machine **matching the target architecture**:
 
 ```text
-runtime/<target>/          # 规范目录，保留供检查
-runtime/current/           # tauri.conf.json `bundle.resources` 实际打包的路径
-├── python/                # 可重定位 CPython (python-build-standalone) + deeptutor wheel 及依赖
-└── node/                  # Node.js 官方二进制（deeptutor_web 的 Next.js server 需要）
+runtime/<target>/          # canonical directory, kept for inspection
+runtime/current/           # the path actually packed by tauri.conf.json `bundle.resources`
+├── python/                # relocatable CPython (python-build-standalone) + deeptutor wheel and deps
+└── node/                  # official Node.js binary (needed by deeptutor_web's Next.js server)
 ```
 
-支持的目标：`darwin-arm64`、`darwin-x64`（Intel）、`linux-x64`、`win32-x64`。
+Supported targets: `darwin-arm64`, `darwin-x64` (Intel), `linux-x64`, `win32-x64`.
 
-DeepTutor 始终以锁定版本的 PyPI wheel（`deeptutor==<version>`）作为外部依赖安装进 runtime；本仓库不复制或修改其源码（见 ADR-0003）。构建产物通过 Tauri `bundle.resources` 映射为应用资源（`Resources/runtime/`），不提交到 Git。
+DeepTutor is always installed into the runtime as a pinned PyPI wheel (`deeptutor==<version>`); this repository never copies or modifies its source (see ADR-0003). Build outputs are mapped into application resources via Tauri `bundle.resources` (`Resources/runtime/`) and never committed to Git.
 
-## 2. CI 打包
+## 2. CI packaging
 
-GitHub Actions（`.github/workflows/build.yml`）以四平台矩阵构建：macos-14（Apple Silicon）、macos-13（Intel）、ubuntu-22.04、windows-latest。产物按平台/架构命名，推送 `v*` 标签时自动创建 Release：
+GitHub Actions (`.github/workflows/build.yml`) builds a four-runner matrix: macos-14 (Apple Silicon), macos-13 (Intel), ubuntu-22.04, and windows-latest. Artifacts are named per platform/architecture, and pushing a `v*` tag automatically creates a Release:
 
 ```text
 DeepTutor-Desktop_<version>_macos-apple-silicon.dmg
@@ -26,38 +26,38 @@ DeepTutor-Desktop_<version>_linux-x64.deb / .AppImage
 DeepTutor-Desktop_<version>_windows-x64_setup.exe
 ```
 
-Intel 与 Apple Silicon 的 macOS 包使用不同文件名，不会混淆。本地 `pnpm build` 通过 `postbuild` 钩子（`scripts/rename-bundles.mjs`）得到同名产物。
+Intel and Apple Silicon macOS packages use distinct filenames and can never be confused. Local `pnpm build` produces identically named outputs via the `postbuild` hook (`scripts/rename-bundles.mjs`).
 
-## 3. 构建原则
+## 3. Build principles
 
-- 固定 `deeptutor` 版本和依赖 lock；
-- 在目标架构上构建，不把本机 venv 直接复制到另一架构；
-- 不提交 runtime、wheelhouse 或大体积二进制到 Git；
-- 待办：macOS codesign / notarization、Release 附带 SHA-256 校验和（未实现）。
+- pin the `deeptutor` version and its dependency lock;
+- build on the target architecture; never copy a host venv to another architecture;
+- never commit runtimes, wheelhouses, or large binaries to Git;
+- TODO (unimplemented): macOS codesign / notarization, SHA-256 checksums attached to Releases.
 
-## 4. 应用内资源布局
+## 4. In-app resource layout
 
-runtime 不使用 Tauri `externalBin`，而是整体作为资源打包：
+The runtime does not use Tauri `externalBin`; it is packed wholesale as resources:
 
 ```text
 DeepTutor Desktop.app/Contents/Resources/runtime/
-├── python/    # bin/python3 + site-packages（含 deeptutor 与 deeptutor_web）
-└── node/      # Node.js 官方发行版（bin/node）
+├── python/    # bin/python3 + site-packages (deeptutor and deeptutor_web included)
+└── node/      # official Node.js distribution (bin/node)
 ```
 
-Rust Core 运行时按以下顺序解析 runtime 目录：环境变量 `DEEPTUTOR_RUNTIME_DIR` → 应用 resources（打包态）→ 仓库 `runtime/` 目录（开发态）。启动子进程时把 `node/bin` 前置到 `PATH`，并设置 `DEEPTUTOR_HOME` 指向应用数据目录。
+At runtime the Rust Core resolves the runtime directory in this order: the `DEEPTUTOR_RUNTIME_DIR` environment variable → application resources (packaged mode) → the repository's `runtime/` directory (development mode). Child processes are spawned with `node/bin` prepended to `PATH` and `DEEPTUTOR_HOME` pointing at the application data directory.
 
-应用安装目录只读。运行时配置、日志、记忆、知识库和生成文件必须位于 Tauri 的应用数据目录（`app_data_dir`）。WebView Renderer 不获得通用 shell 权限。
+The application install directory is read-only. Runtime configuration, logs, memory, knowledge bases, and generated files must live in Tauri's application data directory (`app_data_dir`). The WebView renderer gets no generic shell capability.
 
-## 5. 首版打包选择
+## 5. First-release packaging choice
 
-首版使用"嵌入式 Python runtime + wheel"。原因：DeepTutor 具有动态导入、可选 provider 和资源文件，保留 Python package 运行语义比 PyInstaller 更容易保持兼容性。
+The first release uses an "embedded Python runtime + wheel". Rationale: DeepTutor relies on dynamic imports, optional providers, and resource files, so keeping plain Python package semantics is more compatibility-friendly than PyInstaller.
 
-PyInstaller 可以作为后续优化方向，但需要额外维护 hidden imports、package data、原生扩展和多架构构建。
+PyInstaller remains a possible later optimization, at the cost of maintaining hidden imports, package data, native extensions, and multi-architecture builds.
 
-## 6. 更新策略
+## 6. Update strategy
 
-Desktop 壳和 agent runtime 分开标记版本：
+The desktop shell and the agent runtime are versioned separately:
 
 ```text
 desktop_version: 0.1.0
@@ -65,4 +65,4 @@ agent_version: 1.6.6
 protocol_version: 1
 ```
 
-任何 agent runtime 升级都必须通过兼容性测试后再进入桌面发行包。
+Any agent runtime upgrade must pass compatibility testing before entering a desktop release.

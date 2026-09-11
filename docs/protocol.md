@@ -1,16 +1,16 @@
-# Desktop Bridge 协议草案
+# Desktop Bridge protocol draft
 
-> 本协议是 Tauri 与 Desktop Bridge 之间的内部协议，不是 DeepTutor 官方原生协议。DeepTutor 当前由 Bridge 通过 Python SDK 调用；Bridge 负责将 SDK 的 turn/session/stream 事件转换为下列 JSON-RPC 消息。
+> This is the internal protocol between Tauri and the Desktop Bridge, not a DeepTutor-native protocol. DeepTutor is currently reached by the bridge through the Python SDK; the bridge's job is to translate SDK turns/sessions/stream events into the JSON-RPC messages below.
 
-## 1. 传输
+## 1. Transport
 
-- Transport：stdin/stdout
-- 编码：UTF-8
-- 格式：NDJSON，一行一个 JSON 对象
-- stdout：只允许协议消息
-- stderr：日志、诊断和调试信息
+- Transport: stdin/stdout
+- Encoding: UTF-8
+- Format: NDJSON, one JSON object per line
+- stdout: protocol messages only
+- stderr: logs, diagnostics, and debugging output
 
-## 2. 请求
+## 2. Request
 
 ```json
 {
@@ -24,7 +24,7 @@
 }
 ```
 
-## 3. 成功响应
+## 3. Success response
 
 ```json
 {
@@ -37,7 +37,7 @@
 }
 ```
 
-## 4. 流式事件
+## 4. Streaming event
 
 ```json
 {
@@ -52,7 +52,7 @@
 }
 ```
 
-## 5. 错误
+## 5. Error
 
 ```json
 {
@@ -66,9 +66,9 @@
 }
 ```
 
-## 6. 生命周期方法
+## 6. Lifecycle methods
 
-预留以下方法名：
+The following method names are reserved:
 
 ```text
 runtime.get_info
@@ -79,15 +79,15 @@ chat.send
 chat.resume
 session.list
 session.get
-workspace.get   # 预留，未实现
-workspace.set   # 预留，未实现
+workspace.get   # reserved, not implemented
+workspace.set   # reserved, not implemented
 ```
 
-方法名、参数和返回值必须在实现前形成 schema，不允许把 DeepTutor 内部 Python 函数签名直接暴露给 Renderer。
+Method names, parameters, and return values must be defined as schemas before implementation; DeepTutor's internal Python function signatures are never exposed to the renderer as-is.
 
-## 7. 协议版本
+## 7. Protocol version
 
-Bridge 启动后应先返回 runtime 信息：
+After startup the bridge first returns runtime information:
 
 ```json
 {

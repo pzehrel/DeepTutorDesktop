@@ -1,37 +1,37 @@
-# ADR-0003：内嵌完整 DeepTutor Web 栈并允许回环 HTTP
+# ADR-0003: Embed the full DeepTutor web stack, allowing loopback HTTP
 
-- 状态：Accepted
-- 日期：2026-09-10
-- 适用范围：DeepTutor Desktop 的完整应用分发
-- 关系：修订 ADR-0001 中“agent 不监听 TCP 端口”的约束；stdio bridge（ADR-0001）继续保留用于协议化访问。
+- Status: Accepted
+- Date: 2026-09-10
+- Scope: full-application distribution of DeepTutor Desktop
+- Relation: amends ADR-0001's "the agent listens on no TCP port" constraint for the embedded web stack; the stdio bridge (ADR-0001) remains in place for protocol-level access.
 
-## 背景
+## Context
 
-ADR-0001 采用 stdio bridge 的前提是桌面壳只需要编程式访问 DeepTutor 能力。但产品目标是交付完整的 DeepTutor 学习界面：打开应用即是 Web UI（会话、知识库、可视化、设置等）。该界面由 DeepTutor 官方 wheel 内置的 Next.js 前端（`deeptutor_web`）与 FastAPI 后端组成，两者只讲 HTTP/WebSocket，没有 stdio 形态。
+ADR-0001 adopted the stdio bridge on the premise that the desktop shell only needed programmatic access to DeepTutor capabilities. The product goal, however, is to deliver the complete DeepTutor learning interface: opening the app lands the user in the web UI (sessions, knowledge bases, visualizations, settings, and more). That interface is provided by DeepTutor's official wheel — a Next.js frontend (`deeptutor_web`) plus a FastAPI backend — and the two speak only HTTP/WebSocket; there is no stdio form of them.
 
-## 决策
+## Decision
 
-1. 构建阶段将锁定版本的官方 `deeptutor` wheel 安装进内嵌 Python runtime（python-build-standalone），连同 Node.js 官方二进制一起作为 Tauri resources 打包（见 `docs/packaging.md`）；
-2. Rust Core 在应用数据目录下运行 `deeptutor start --detach --no-browser`，读取 home 目录 `system.json` 中记录的端口，等待回环地址就绪后将窗口导航到前端 URL；
-3. 后端与前端只绑定 `127.0.0.1`，端口由 launcher 管理，应用退出时调用 `deeptutor stop` 优雅关闭；
-4. 本项目不复制、不修改 DeepTutor 源码；DeepTutor 始终作为固定版本的外部依赖（PyPI wheel）消费。
+1. At build time, install the pinned official `deeptutor` wheel into an embedded Python runtime (python-build-standalone) and package it together with an official Node.js binary as Tauri resources (see `docs/packaging.md`).
+2. The Rust Core runs `deeptutor start --detach --no-browser` inside the application data directory, reads the ports recorded in the home directory's `system.json`, waits for the loopback interface to become ready, and then navigates the window to the frontend URL.
+3. Backend and frontend bind to `127.0.0.1` only, with ports managed by the launcher; on app exit, `deeptutor stop` performs a graceful shutdown.
+4. This project never copies or modifies DeepTutor source; DeepTutor is always consumed as a pinned external dependency (the PyPI wheel).
 
-## 与 ADR-0001 约束的关系
+## Relation to ADR-0001's constraint
 
-ADR-0001 禁止 TCP 监听的动机是“不向本机其他进程暴露 agent”。完整 Web UI 无法满足该约束，本 ADR 将其修订为：**仅允许 launcher 绑定回环地址的例外**，并保留 stdio bridge（ADR-0001、`bridge/`）作为协议化、无 TCP 的访问通道，二者并存。
+ADR-0001's TCP ban was motivated by "do not expose the agent to other processes on this machine". The full web UI cannot satisfy that constraint, so this ADR amends it to: **the sole permitted exception is the launcher binding to the loopback interface**, while the stdio bridge (ADR-0001, `bridge/`) remains the protocol-level, TCP-free access channel. Both coexist.
 
-## 代价
+## Costs
 
-- 本机同用户的其他进程理论上可以访问回环端口（与浏览器访问 localhost 同级风险）；
-- 分发体积显著增大（Python + Node + wheel 约数百 MB）；
-- 需要 CI 为每个目标平台构建 runtime。
+- other processes under the same local user can in principle reach the loopback ports (the same risk level as a browser accessing localhost);
+- distribution size grows significantly (Python + Node + wheel, several hundred MB);
+- CI must build a runtime per target platform.
 
-## 未选择的方案
+## Alternatives considered
 
-### 把 Next.js 前端改造成静态资源嵌入 WebView
+### Converting the Next.js frontend into static assets embedded in the WebView
 
-需要 fork DeepTutor 前端并把 API 层改写为 bridge 协议，违反“不耦合上游源码”的边界，且随上游版本频繁失效。
+Requires forking the DeepTutor frontend and rewriting its API layer onto the bridge protocol — violating the "no upstream source coupling" boundary, and breaking with every upstream release.
 
-### 用浏览器打开前端、Tauri 仅作启动器
+### Opening the frontend in a browser with Tauri as a mere launcher
 
-体验退化为“打开网页”，不满足“安装一个桌面应用即可使用”的目标。
+Degrades the experience to "opening a web page" and fails the "install one desktop app and you are done" goal.
