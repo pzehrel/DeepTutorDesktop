@@ -44,6 +44,10 @@ jobs:
           sudo apt-get update && sudo apt-get install -y
           libwebkit2gtk-4.1-dev build-essential curl wget file
           libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+          # libfuse2 is required to execute the linuxdeploy AppImage tool
+          # during Tauri's AppImage bundling step.
+          # linuxdeploy 以 AppImage 形式运行, 打包 AppImage 时需要 libfuse2。
+          libfuse2
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile

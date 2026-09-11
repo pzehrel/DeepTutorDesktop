@@ -32,20 +32,31 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 # ---- Detect host platform and map it to a target id ----------------------
-# 探测宿主平台并映射为目标标识
-OS="$(uname -s)"
-ARCH="$(uname -m)"
-case "$OS-$ARCH" in
-  Darwin-arm64) DEFAULT_TARGET=darwin-arm64 ;;
-  Darwin-x86_64) DEFAULT_TARGET=darwin-x64 ;;
-  Linux-x86_64) DEFAULT_TARGET=linux-x64 ;;
-  MINGW*-AMD64|MSYS*-AMD64|CYGWIN*-AMD64) DEFAULT_TARGET=win32-x64 ;;
-  *)
-    echo "unsupported host: $OS-$ARCH (pass an explicit target if confident)" >&2
-    exit 2
-    ;;
-esac
-TARGET="${1:-$DEFAULT_TARGET}"
+# 探测宿主平台并映射为目标标识。显式传入目标时跳过探测: Git Bash 的
+# uname -s 会带上 -x86_64 后缀 (如 MINGW64_NT-10.0-26100-x86_64), 且 CI
+# 总是运行在与目标一致的 runner 上, 无需依赖宿主探测。
+# Skip host detection when a target is passed explicitly: Git Bash's uname -s
+# carries an -x86_64 suffix (e.g. MINGW64_NT-10.0-26100-x86_64), and CI always
+# runs on a runner matching the target anyway.
+if [ -n "${1:-}" ]; then
+  TARGET="$1"
+else
+  OS="$(uname -s)"
+  ARCH="$(uname -m)"
+  case "$OS-$ARCH" in
+    Darwin-arm64) DEFAULT_TARGET=darwin-arm64 ;;
+    Darwin-x86_64|Darwin-x64) DEFAULT_TARGET=darwin-x64 ;;
+    Linux-x86_64) DEFAULT_TARGET=linux-x64 ;;
+    # Accept both AMD64 and x86_64: MSYS2 reports either depending on version.
+    # 同时接受 AMD64 与 x86_64: 不同版本 MSYS2 二者皆可能返回。
+    MINGW*-AMD64|MINGW*-x86_64|MSYS*-AMD64|MSYS*-x86_64|CYGWIN*-AMD64|CYGWIN*-x86_64) DEFAULT_TARGET=win32-x64 ;;
+    *)
+      echo "unsupported host: $OS-$ARCH (pass an explicit target if confident)" >&2
+      exit 2
+      ;;
+  esac
+  TARGET="$DEFAULT_TARGET"
+fi
 
 # Mapping tables: uv/python-build-standalone triples and Node archives.
 # 映射表: uv/python-build-standalone triple 与 Node 发行包。
