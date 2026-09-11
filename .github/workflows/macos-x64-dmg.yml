@@ -67,20 +67,22 @@ jobs:
           sudo pkill -9 -x mds_stores 2>/dev/null || true
 
       # Two-stage strategy:
-      #   1. Tauri's own dmg bundling (fancy window layout), watchdogged and
-      #      retried once — the known failure mode is a multi-minute stall in
-      #      `hdiutil detach` ("timeout for DiskArbitration expired") on the
-      #      ~890MB / 68k-file .app.
+      #   1. Tauri's own dmg bundling (fancy window layout) in a SINGLE
+      #      watchdogged attempt — this branch currently measures how long one
+      #      attempt takes on the Intel runner, so no retry loop. The known
+      #      failure mode is a multi-minute stall in `hdiutil detach` ("timeout
+      #      for DiskArbitration expired") on the ~890MB / 68k-file .app.
       #   2. Fallback that sidesteps bundle_dmg.sh entirely: `hdiutil create
       #      -srcfolder -format UDZO` builds a compressed image from the .app
       #      WITHOUT ever attaching it, so there is no volume to detach and the
       #      failing code path is never reached. The image loses the custom
       #      installer window layout but carries the identical payload.
       # 两段式策略:
-      #   1. 先走 Tauri 自带的 dmg 打包 (带自定义窗口布局), 加看门狗并重试
-      #      一次 —— 已知失败模式是这个约 890MB/6.8 万文件的 .app 在
-      #      `hdiutil detach` 上卡死数分钟 ("timeout for DiskArbitration
-      #      expired")。
+      #   1. 先走 Tauri 自带的 dmg 打包 (带自定义窗口布局), 仅单次带看门狗的
+      #      尝试 —— 本分支当前的任务是测量 Intel runner 上单次尝试的耗时,
+      #      因此没有重试循环。已知失败模式是这个约 890MB/6.8 万文件的
+      #      .app 在 `hdiutil detach` 上卡死数分钟 ("timeout for
+      #      DiskArbitration expired")。
       #   2. 兜底方案完全绕开 bundle_dmg.sh: `hdiutil create -srcfolder
       #      -format UDZO` 直接从 .app 生成压缩镜像, 全程不挂载卷, 因此没有
       #      可供 detach 卡死的路径。镜像会失去自定义安装窗口布局, 但载荷
@@ -97,7 +99,6 @@ jobs:
 
           ATTEMPT_TIMEOUT=2700
           KILL_GRACE=60
-          ATTEMPTS=2
 
           cleanup() {
             pkill -f bundle_dmg.sh 2>/dev/null || true
@@ -149,28 +150,31 @@ jobs:
             return "$status"
           }
 
-          # ---- Stage 1: tauri's dmg bundling, two watchdogged attempts ----
-          # ---- 阶段 1: Tauri 自带 dmg 打包, 两次带看门狗的尝试 ----
+          # ---- Stage 1: tauri's dmg bundling, ONE watchdogged attempt ----
+          # The elapsed time is printed so the CI log directly answers "how
+          # long does a single Intel dmg attempt take".
+          # ---- 阶段 1: Tauri 自带 dmg 打包, 单次带看门狗的尝试 ----
+          # 打印耗时, 让 CI 日志直接回答「Intel 上单次 dmg 尝试要多久」。
           stage1_ok=0
-          for ((attempt = 1; attempt <= ATTEMPTS; attempt++)); do
-            if build_with_watchdog "bundling-logs/attempt-$attempt.log" \
-              --bundles app,dmg; then
-              echo "tauri dmg succeeded on attempt $attempt"
-              stage1_ok=1
-              break
-            fi
+          stage1_started=$SECONDS
+          if build_with_watchdog "bundling-logs/attempt-1.log" --bundles app,dmg; then
+            echo "tauri dmg attempt 1 succeeded"
+            stage1_ok=1
+          else
             status=$?
-            echo "::warning::tauri dmg attempt $attempt failed (exit $status)"
+            echo "::warning::tauri dmg attempt 1 failed (exit $status)"
+          fi
+          echo "stage 1 (tauri bundler) took $((SECONDS - stage1_started))s"
+          if [ "$stage1_ok" -ne 1 ]; then
             if [ -f src-tauri/target/release/bundle/dmg/bundle_dmg.sh ]; then
               cp src-tauri/target/release/bundle/dmg/bundle_dmg.sh \
-                "bundling-logs/attempt-$attempt.bundle_dmg.sh" || true
+                "bundling-logs/attempt-1.bundle_dmg.sh" || true
             fi
-            echo "::group::attempt $attempt output (tail)"
-            tail -n 120 "bundling-logs/attempt-$attempt.log" || true
+            echo "::group::attempt 1 output (tail)"
+            tail -n 120 "bundling-logs/attempt-1.log" || true
             echo "::endgroup::"
             cleanup
-            sleep 15
-          done
+          fi
 
           shopt -s nullglob
           if [ "$stage1_ok" -eq 1 ]; then
@@ -184,6 +188,7 @@ jobs:
           # ---- Stage 2: app-only build + attach-free hdiutil create ----
           # ---- 阶段 2: 仅构建 app, 再用不挂载卷的 hdiutil create ----
           echo "::warning::falling back to attach-free hdiutil create"
+          stage2_started=$SECONDS
           build_with_watchdog "bundling-logs/fallback-app.log" --bundles app
           app_status=$?
           if [ "$app_status" -ne 0 ]; then
@@ -198,6 +203,7 @@ jobs:
           # 因此不可能发生 detach 卡死。
           if hdiutil create -volname "DeepTutorDesktop" -format UDZO -ov \
             -srcfolder "$APP" "$DMG_OUT" 2> "bundling-logs/fallback-dmg.log"; then
+            echo "stage 2 (app build + hdiutil create) took $((SECONDS - stage2_started))s"
             echo "stage=hdiutil-fallback" >> "$GITHUB_OUTPUT"
             exit 0
           fi
