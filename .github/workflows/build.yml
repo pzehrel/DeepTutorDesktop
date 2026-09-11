@@ -38,15 +38,17 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # libfuse2 is required to execute the linuxdeploy AppImage tool during
+      # Tauri's AppImage bundling step. Keep shell comments outside the
+      # folded run block: YAML folding joins lines and would swallow args.
+      # linuxdeploy 以 AppImage 形式运行, 打包 AppImage 时需要 libfuse2。
+      # 注释必须放在折叠块外: YAML 折叠会拼接各行, 行内注释会吞掉参数。
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
         run: >
           sudo apt-get update && sudo apt-get install -y
           libwebkit2gtk-4.1-dev build-essential curl wget file
           libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
-          # libfuse2 is required to execute the linuxdeploy AppImage tool
-          # during Tauri's AppImage bundling step.
-          # linuxdeploy 以 AppImage 形式运行, 打包 AppImage 时需要 libfuse2。
           libfuse2
 
       - name: Install frontend dependencies
