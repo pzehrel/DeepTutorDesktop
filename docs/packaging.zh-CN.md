@@ -23,9 +23,11 @@ GitHub Actions（`.github/workflows/build.yml`）以 macos-14（Apple Silicon）
 
 ```text
 DeepTutorDesktop_<version>_macos-apple-silicon.dmg
-DeepTutorDesktop_<version>_macos-intel.dmg
+DeepTutorDesktop_<version>_macos-intel.app.zip
 DeepTutorDesktop_<version>_windows-x64_setup.exe
 ```
+
+Intel 改为发布 zip 压缩的 `.app` 而非 dmg：在 Intel runner 上为这个约 890MB、6.8 万文件的包创建 dmg 镜像要么耗时约 10 分钟，要么死在 `hdiutil detach`（"timeout for DiskArbitration expired"）；而 `ditto -c -k` 只需一两分钟即可产出同样的载荷，且完全不经过 `hdiutil`。
 
 Intel 与 Apple Silicon 的 macOS 包使用不同文件名，不会混淆。本地 `pnpm build` 保持 Tauri 默认产物名（`<productName>_<version>_<arch>.<ext>`，如 `DeepTutorDesktop_0.0.1_aarch64.dmg`）；仅 CI 产物使用上述平台明确命名。
 

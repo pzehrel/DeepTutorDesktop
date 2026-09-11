@@ -23,9 +23,11 @@ Pushing a `v<version>` tag is the whole release procedure: the `version` job wri
 
 ```text
 DeepTutorDesktop_<version>_macos-apple-silicon.dmg
-DeepTutorDesktop_<version>_macos-intel.dmg
+DeepTutorDesktop_<version>_macos-intel.app.zip
 DeepTutorDesktop_<version>_windows-x64_setup.exe
 ```
+
+Intel ships the zipped `.app` rather than a dmg: creating a dmg image of the ~890MB, 68k-file bundle on the Intel runner either took ~10 minutes or died in `hdiutil detach` ("timeout for DiskArbitration expired"), while `ditto -c -k` produces the same payload in a minute or two without touching `hdiutil`.
 
 Intel and Apple Silicon macOS packages use distinct filenames and can never be confused. Local `pnpm build` keeps Tauri's default bundle names (`<productName>_<version>_<arch>.<ext>`, e.g. `DeepTutorDesktop_0.0.1_aarch64.dmg`); only CI artifacts get the platform-explicit names above.
 
