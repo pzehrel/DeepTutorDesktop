@@ -1,92 +1,94 @@
 # DeepTutor Desktop
 
-把 [HKUDS/DeepTutor](https://github.com/HKUDS/DeepTutor) 完整打包进一个 Tauri 桌面应用的分发层。安装一个 `.dmg` / `.exe` / `.deb`，不预装 Python、Node.js 或 DeepTutor，打开即是完整的 DeepTutor 学习界面。
+A Tauri desktop distribution layer that packages all of [HKUDS/DeepTutor](https://github.com/HKUDS/DeepTutor) into a single desktop app. Install one `.dmg` / `.exe` / `.deb`, with no preinstalled Python, Node.js, or DeepTutor — opening the app lands you in the full DeepTutor learning interface.
 
-- **内嵌全栈**：python-build-standalone CPython + 锁定版本的 `deeptutor` PyPI wheel（自带 Next.js 前端产物）+ Node.js 官方二进制，全部作为应用资源随包分发；不复制、不修改上游源码。
-- **完整界面**：应用启动后由 Rust 核心拉起 `deeptutor start`（FastAPI 后端 + Next.js 前端），就绪后窗口自动进入 DeepTutor Web UI——聊天、知识库、可视化、设置等全部功能可用。
-- **主题与语言跟随**：启动加载页镜像 DeepTutor 的四套主题（snow / light / dark / glass，配色取自其编译产物）；首次启动按系统语言自动预置中文或英文（非中文一律英文），之后尊重应用内的手动切换。
-- **stdio bridge 并存**：保留零 TCP 的 stdio JSON-RPC 协议层（`bridge/`），用于编程式访问 DeepTutor 能力，见[协议文档](docs/protocol.md)。
-- **干净的生命周期**：内嵌栈只绑定回环地址（ADR-0003）；应用退出时优雅停止全部子进程，无孤儿进程。
+- **Embedded full stack**: python-build-standalone CPython + a pinned `deeptutor` PyPI wheel (which ships the built Next.js frontend) + an official Node.js binary, all bundled as application resources; upstream source is never copied or modified.
+- **The complete interface**: on launch the Rust core starts `deeptutor start` (FastAPI backend + Next.js frontend) and, once it is ready, navigates the window into the DeepTutor web UI — chat, knowledge bases, visualizations, settings, and every other feature.
+- **Theme and language follow**: the boot loader mirrors DeepTutor's four themes (snow / light / dark / glass, palettes extracted from its compiled assets); the first launch seeds Chinese or English from the OS language (everything non-Chinese gets English), and manual in-app switches are always respected afterwards.
+- **stdio bridge kept alongside**: a zero-TCP stdio JSON-RPC protocol layer (`bridge/`) remains available for programmatic access to DeepTutor capabilities — see the [protocol docs](docs/protocol.md).
+- **Clean lifecycle**: the embedded stack binds only to the loopback interface (ADR-0003); quitting the app gracefully stops every child process with no orphans.
 
-## 安装
+## Install
 
-从 GitHub Releases 下载对应平台的安装包（推送 `v*` 标签后由 CI 自动发布）：
+Download the installer for your platform from GitHub Releases (published automatically by CI when a `v*` tag is pushed):
 
-| 平台 | 安装包 |
+| Platform | Installer |
 |---|---|
-| macOS Apple Silicon | `DeepTutor-Desktop_<版本>_macos-apple-silicon.dmg` |
-| macOS Intel | `DeepTutor-Desktop_<版本>_macos-intel.dmg` |
-| Linux x64 | `DeepTutor-Desktop_<版本>_linux-x64.deb` / `.AppImage` |
-| Windows x64 | `DeepTutor-Desktop_<版本>_windows-x64_setup.exe` |
+| macOS Apple Silicon | `DeepTutor-Desktop_<version>_macos-apple-silicon.dmg` |
+| macOS Intel | `DeepTutor-Desktop_<version>_macos-intel.dmg` |
+| Linux x64 | `DeepTutor-Desktop_<version>_linux-x64.deb` / `.AppImage` |
+| Windows x64 | `DeepTutor-Desktop_<version>_windows-x64_setup.exe` |
 
-首次使用需要在 DeepTutor 的 Settings 中配置模型 API key 才能开始对话。用户数据（配置、知识库、记忆）写入系统应用数据目录，不写入安装目录。
+First use requires configuring a model API key in DeepTutor's Settings before conversations can start. User data (configuration, knowledge bases, memory) lives in the OS application-data directory, never in the install directory.
 
-## 架构
+## Architecture
 
 ```text
 ┌──────────────────────────────────────────────┐
 │ DeepTutor Desktop (Tauri)                    │
 │                                              │
-│  Renderer（WebView）                          │
-│    └ 启动加载页 ──就绪后导航──▶ DeepTutor Web UI │
+│  Renderer (WebView)                          │
+│    └ boot loader ──on ready──▶ DeepTutor Web │
 │                                              │
 │  Tauri Rust Core                             │
-│    ├ 内嵌栈管理：deeptutor start/stop、        │
-│    │ 回环就绪探测、主题/语言预置               │
-│    └ stdio bridge 管理（可选，编程式访问）      │
+│    ├ embedded stack: deeptutor start/stop,   │
+│    │ loopback readiness probe, theme/lang    │
+│    └ stdio bridge (optional, programmatic)   │
 │                                              │
 │  Resources/runtime/                          │
-│    ├ python/  CPython + deeptutor wheel       │
+│    ├ python/  CPython + deeptutor wheel      │
 │    └ node/    Node.js                        │
 └──────────────────────────────────────────────┘
-              │ http://127.0.0.1（回环）
+              │ http://127.0.0.1 (loopback)
               ▼
-    DeepTutor Web（FastAPI + Next.js）
+    DeepTutor Web (FastAPI + Next.js)
 ```
 
-关键决策记录：[ADR-0001](docs/adr/0001-sidecar-stdio.md)（stdio bridge）、[ADR-0002](docs/adr/0002-use-tauri.md)（选用 Tauri）、[ADR-0003](docs/adr/0003-embedded-web-stack.md)（内嵌 Web 栈与回环例外）。详见[架构说明](docs/architecture.md)与[打包策略](docs/packaging.md)。
+Key decisions: [ADR-0001](docs/adr/0001-sidecar-stdio.md) (stdio bridge), [ADR-0002](docs/adr/0002-use-tauri.md) (choosing Tauri), [ADR-0003](docs/adr/0003-embedded-web-stack.md) (embedded web stack and the loopback exception). See the [architecture guide](docs/architecture.md) and the [packaging strategy](docs/packaging.md).
 
-## 从源码构建
+## Building from source
 
-依赖：[pnpm](https://pnpm.io)、[uv](https://docs.astral.sh/uv/)、Rust 工具链、Node.js 22+。
+Requirements: [pnpm](https://pnpm.io), [uv](https://docs.astral.sh/uv/), a Rust toolchain, Node.js 22+.
 
 ```bash
-pnpm install                    # 前端依赖
-scripts/build-runtime.sh        # 构建内嵌 runtime（首次必做，约 800MB）
-pnpm build                      # 打包 .app / .dmg（产物在 src-tauri/target/release/bundle/）
+pnpm install                    # frontend dependencies
+scripts/build-runtime.sh        # build the embedded runtime (required once, ~800MB)
+pnpm build                      # bundle .app / .dmg (output in src-tauri/target/release/bundle/)
 ```
 
-`scripts/build-runtime.sh` 支持四个目标，需在架构一致的机器上运行：`darwin-arm64`、`darwin-x64`、`linux-x64`、`win32-x64`。CI（`.github/workflows/build.yml`）以四平台矩阵自动构建并发布。
+`scripts/build-runtime.sh` supports four targets and must run on a matching architecture: `darwin-arm64`, `darwin-x64`, `linux-x64`, `win32-x64`. CI (`.github/workflows/build.yml`) builds all four automatically in a matrix.
 
-## 开发
+## Development
 
 ```bash
-pnpm check                      # JS/Python lint、typecheck 与全部测试
-cargo test                      # Rust 单元测试（src-tauri）
-pnpm test:bridge                # Python bridge 测试
-pnpm dev                        # 开发模式启动桌面应用
+pnpm check                      # JS/Python lint, typecheck, and all tests
+cargo test                      # Rust unit tests (src-tauri)
+pnpm test:bridge                # Python bridge tests
+pnpm dev                        # run the desktop app in dev mode
 ```
 
-开发模式下，Rust 核心按 `DEEPTUTOR_RUNTIME_DIR` → 仓库 `runtime/current` 的顺序解析内嵌 runtime；stdio bridge 自动查找 `bridge/.venv` 的 Python。可用环境变量：
+In dev mode the Rust core resolves the embedded runtime via `DEEPTUTOR_RUNTIME_DIR` → the repository's `runtime/current`; the stdio bridge looks up `bridge/.venv` automatically. Environment overrides:
 
-- `DEEPTUTOR_RUNTIME_DIR` — 内嵌 runtime 目录（含 `python/` 与 `node/`）
-- `DEEPTUTOR_BRIDGE` / `DEEPTUTOR_BRIDGE_ARGS` — 覆盖 bridge 可执行文件与参数
+- `DEEPTUTOR_RUNTIME_DIR` — embedded runtime directory (containing `python/` and `node/`)
+- `DEEPTUTOR_BRIDGE` / `DEEPTUTOR_BRIDGE_ARGS` — override the bridge executable and arguments
 
-## 目录结构
+## Directory layout
 
 ```text
-bridge/        # deeptutor-desktop-bridge（stdio JSON-RPC sidecar）
-frontend/      # 渲染层（启动加载页 + Transport 抽象）
-runtime/       # 内嵌 runtime 构建产物（gitignore，不提交）
-scripts/       # runtime 构建、产物重命名脚本
-src-tauri/     # Tauri/Rust 主工程（栈生命周期 + bridge + IPC）
-schemas/       # bridge 协议 v1 JSON Schema
-docs/          # 架构、协议、打包与 ADR
-.github/       # CI 工作流
+bridge/        # deeptutor-desktop-bridge (stdio JSON-RPC sidecar)
+frontend/      # renderer (boot loader + Transport abstraction)
+runtime/       # embedded runtime build output (gitignored, never committed)
+scripts/       # runtime build and bundle-rename scripts
+src-tauri/     # Tauri/Rust core (stack lifecycle + bridge + IPC)
+schemas/       # bridge protocol v1 JSON Schemas
+docs/          # architecture, protocol, packaging, and ADRs
+.github/       # CI workflows
 ```
 
-## 安全边界
+## Security boundary
 
-- 内嵌 Web 栈仅绑定 `127.0.0.1`，不对外暴露（ADR-0003 记录的例外；stdio bridge 保持零 TCP）。
-- WebView 渲染层只调用白名单 Tauri commands，无 shell / 子进程权限。
-- DeepTutor 作为锁定版本的外部 wheel 依赖消费，本仓库不含其源码；上游升级须通过兼容性测试。
+- The embedded web stack binds only to `127.0.0.1` and is never exposed externally (the exception recorded in ADR-0003; the stdio bridge stays zero-TCP).
+- The WebView renderer calls only allowlisted Tauri commands and holds no shell or subprocess capability.
+- DeepTutor is consumed as a pinned external wheel dependency; this repository contains none of its source, and upstream upgrades must pass compatibility testing.
+
+Localized version: [简体中文](README.zh-CN.md).
