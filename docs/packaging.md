@@ -26,7 +26,7 @@ DeepTutor-Desktop_<version>_linux-x64.deb / .AppImage
 DeepTutor-Desktop_<version>_windows-x64_setup.exe
 ```
 
-Intel and Apple Silicon macOS packages use distinct filenames and can never be confused. Local `pnpm build` produces identically named outputs via the `postbuild` hook (`scripts/rename-bundles.mjs`).
+Intel and Apple Silicon macOS packages use distinct filenames and can never be confused. Local `pnpm build` keeps Tauri's default bundle names (`<productName>_<version>_<arch>.<ext>`, e.g. `DeepTutor Desktop_0.1.0_aarch64.dmg`); only CI artifacts get the platform-explicit names above.
 
 ## 3. Build principles
 

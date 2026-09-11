@@ -26,7 +26,7 @@ DeepTutor-Desktop_<version>_linux-x64.deb / .AppImage
 DeepTutor-Desktop_<version>_windows-x64_setup.exe
 ```
 
-Intel 与 Apple Silicon 的 macOS 包使用不同文件名，不会混淆。本地 `pnpm build` 通过 `postbuild` 钩子（`scripts/rename-bundles.mjs`）得到同名产物。
+Intel 与 Apple Silicon 的 macOS 包使用不同文件名，不会混淆。本地 `pnpm build` 保持 Tauri 默认产物名（`<productName>_<version>_<arch>.<ext>`，如 `DeepTutor Desktop_0.1.0_aarch64.dmg`）；仅 CI 产物使用上述平台明确命名。
 
 ## 3. 构建原则
 
