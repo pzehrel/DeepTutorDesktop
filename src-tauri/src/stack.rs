@@ -43,6 +43,22 @@ pub const STACK_EVENT: &str = "deeptutor://state";
 const READY_TIMEOUT: Duration = Duration::from_secs(180);
 const PROBE_INTERVAL: Duration = Duration::from_millis(750);
 
+/// Preferred loopback ports for the embedded stack, overriding the upstream
+/// launcher defaults (backend 8001 / frontend 3782). These are unregistered,
+/// high offsets picked to avoid casual collisions with common localhost
+/// services; the launcher still re-resolves on conflict and records the actual
+/// ports in `system.json`, which remains the source of truth for this code.
+/// This is obscurity, not access control: any local process can read the
+/// resolved ports from `system.json` or scan the loopback interface.
+///
+/// 内嵌栈的首选回环端口, 用于覆盖上游 launcher 默认值(后端 8001 / 前端 3782)。
+/// 选择这两个未注册的高位端口是为了减少与常见 localhost 服务的顺手冲突;
+/// 冲突时 launcher 仍会重新解析, 并把实际端口写入 `system.json`——
+/// 那才是本代码读取端口的唯一事实来源。注意这只是隐匿性而非访问控制:
+/// 本机任意进程都能从 `system.json` 读到实际端口, 或直接扫描回环接口。
+const PREFERRED_BACKEND_PORT: &str = "39118";
+const PREFERRED_FRONTEND_PORT: &str = "39117";
+
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum StackState {
@@ -131,6 +147,7 @@ impl StackManager {
                     &["stop", "--home", &home.to_string_lossy()],
                     &runtime_dir,
                     &home,
+                    &[],
                 )
                 .await;
             }
@@ -288,11 +305,20 @@ fn python_in(runtime_dir: &Path) -> Option<PathBuf> {
 /// `DEEPTUTOR_HOME` 必须以环境变量形式提供, 不能只传 `--home` 参数:
 /// CLI 在导入期、参数解析之前就会初始化日志, 否则会从 Finder 启动的
 /// 只读工作目录推导 workspace 路径。
+///
+/// `extra_env` carries per-invocation overrides the launcher reads from its
+/// process environment (e.g. `FRONTEND_PORT` / `BACKEND_PORT` for `start`).
+/// Passing an empty slice spawns the CLI with defaults only.
+///
+/// `extra_env` 携带按调用覆盖的环境变量(launcher 会从进程环境读取,
+/// 例如 `start` 用的 `FRONTEND_PORT` / `BACKEND_PORT`)。
+/// 传空切片则仅使用默认值启动 CLI。
 async fn run_cli(
     python: &Path,
     args: &[&str],
     runtime_dir: &Path,
     home: &Path,
+    extra_env: &[(&str, &str)],
 ) -> Result<(), String> {
     let mut command = Command::new(python);
     command
@@ -300,6 +326,7 @@ async fn run_cli(
         .args(args)
         .env("DEEPTUTOR_HOME", home)
         .env("PATH", prepend_node_bin(runtime_dir))
+        .envs(extra_env.iter().copied())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let child = command
@@ -382,6 +409,10 @@ async fn start_stack(app: &AppHandle) -> Result<String, String> {
         ],
         &runtime_dir,
         &home,
+        &[
+            ("BACKEND_PORT", PREFERRED_BACKEND_PORT),
+            ("FRONTEND_PORT", PREFERRED_FRONTEND_PORT),
+        ],
     )
     .await?;
 
