@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-09-10
-- Scope: full-application distribution of DeepTutor Desktop
+- Scope: full-application distribution of DeepTutorDesktop
 - Relation: amends ADR-0001's "the agent listens on no TCP port" constraint for the embedded web stack; the stdio bridge (ADR-0001) remains in place for protocol-level access.
 
 ## Context

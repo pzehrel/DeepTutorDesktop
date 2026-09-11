@@ -2,9 +2,9 @@
 
 <div align="center">
 
-<img src="assets/branding/deeptutor-desktop-icon-1024.png" alt="DeepTutor Desktop logo" width="160">
+<img src="assets/branding/deeptutor-desktop-icon-1024.png" alt="DeepTutorDesktop logo" width="160">
 
-# DeepTutor Desktop
+# DeepTutorDesktop
 
 The complete [HKUDS/DeepTutor](https://github.com/HKUDS/DeepTutor) learning platform, packaged as one desktop app.
 
@@ -24,14 +24,14 @@ Install a single `.dmg` / `.exe` / `.deb` — no Python, Node.js, or DeepTutor p
 
 ## Install
 
-Download the installer for your platform from [GitHub Releases](https://github.com/pzehrel/DeepTutor-Desktop/releases):
+Download the installer for your platform from [GitHub Releases](https://github.com/pzehrel/DeepTutorDesktop/releases):
 
 | Platform | Installer |
 |---|---|
-| macOS Apple Silicon | `DeepTutor-Desktop_<version>_macos-apple-silicon.dmg` |
-| macOS Intel | `DeepTutor-Desktop_<version>_macos-intel.dmg` |
-| Linux x64 | `DeepTutor-Desktop_<version>_linux-x64.deb` / `.AppImage` |
-| Windows x64 | `DeepTutor-Desktop_<version>_windows-x64_setup.exe` |
+| macOS Apple Silicon | `DeepTutorDesktop_<version>_macos-apple-silicon.dmg` |
+| macOS Intel | `DeepTutorDesktop_<version>_macos-intel.dmg` |
+| Linux x64 | `DeepTutorDesktop_<version>_linux-x64.deb` / `.AppImage` |
+| Windows x64 | `DeepTutorDesktop_<version>_windows-x64_setup.exe` |
 
 First use requires configuring a model API key in DeepTutor's Settings before conversations can start. User data (configuration, knowledge bases, memory) lives in the OS application-data directory, never in the install directory.
 

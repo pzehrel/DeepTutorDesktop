@@ -2,7 +2,7 @@
 
 - 状态：Accepted
 - 日期：2026-09-10
-- 适用范围：DeepTutor Desktop 的完整应用分发
+- 适用范围：DeepTutorDesktop 的完整应用分发
 - 关系：修订 ADR-0001 中“agent 不监听 TCP 端口”的约束；stdio bridge（ADR-0001）继续保留用于协议化访问。
 
 ## 背景

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://deeptutor.info/schemas/bridge/v1/request.schema.json",
-  "title": "DeepTutor Desktop Bridge Request",
+  "title": "DeepTutorDesktop Bridge Request",
   "type": "object",
   "required": ["jsonrpc", "id", "method"],
   "properties": {

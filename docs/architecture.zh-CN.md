@@ -1,4 +1,4 @@
-# DeepTutor Desktop 架构
+# DeepTutorDesktop 架构
 
 ## 1. 范围
 

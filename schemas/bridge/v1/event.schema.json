@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://deeptutor.info/schemas/bridge/v1/event.schema.json",
-  "title": "DeepTutor Desktop Bridge Event",
+  "title": "DeepTutorDesktop Bridge Event",
   "type": "object",
   "required": ["jsonrpc", "method", "params"],
   "properties": {

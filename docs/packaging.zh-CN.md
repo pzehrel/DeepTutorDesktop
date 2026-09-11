@@ -20,13 +20,13 @@ DeepTutor 始终以锁定版本的 PyPI wheel（`deeptutor==<version>`）作为�
 GitHub Actions（`.github/workflows/build.yml`）以四平台矩阵构建：macos-14（Apple Silicon）、macos-13（Intel）、ubuntu-22.04、windows-latest。产物按平台/架构命名，推送 `v*` 标签时自动创建 Release：
 
 ```text
-DeepTutor-Desktop_<version>_macos-apple-silicon.dmg
-DeepTutor-Desktop_<version>_macos-intel.dmg
-DeepTutor-Desktop_<version>_linux-x64.deb / .AppImage
-DeepTutor-Desktop_<version>_windows-x64_setup.exe
+DeepTutorDesktop_<version>_macos-apple-silicon.dmg
+DeepTutorDesktop_<version>_macos-intel.dmg
+DeepTutorDesktop_<version>_linux-x64.deb / .AppImage
+DeepTutorDesktop_<version>_windows-x64_setup.exe
 ```
 
-Intel 与 Apple Silicon 的 macOS 包使用不同文件名，不会混淆。本地 `pnpm build` 保持 Tauri 默认产物名（`<productName>_<version>_<arch>.<ext>`，如 `DeepTutor Desktop_0.1.0_aarch64.dmg`）；仅 CI 产物使用上述平台明确命名。
+Intel 与 Apple Silicon 的 macOS 包使用不同文件名，不会混淆。本地 `pnpm build` 保持 Tauri 默认产物名（`<productName>_<version>_<arch>.<ext>`，如 `DeepTutorDesktop_0.1.0_aarch64.dmg`）；仅 CI 产物使用上述平台明确命名。
 
 ## 3. 构建原则
 
@@ -40,7 +40,7 @@ Intel 与 Apple Silicon 的 macOS 包使用不同文件名，不会混淆。本�
 runtime 不使用 Tauri `externalBin`，而是整体作为资源打包：
 
 ```text
-DeepTutor Desktop.app/Contents/Resources/runtime/
+DeepTutorDesktop.app/Contents/Resources/runtime/
 ├── python/    # bin/python3 + site-packages（含 deeptutor 与 deeptutor_web）
 └── node/      # Node.js 官方发行版（bin/node）
 ```

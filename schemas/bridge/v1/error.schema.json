@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://deeptutor.info/schemas/bridge/v1/error.schema.json",
-  "title": "DeepTutor Desktop Bridge Error",
+  "title": "DeepTutorDesktop Bridge Error",
   "type": "object",
   "required": ["code", "message", "retryable"],
   "properties": {

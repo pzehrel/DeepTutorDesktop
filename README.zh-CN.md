@@ -2,9 +2,9 @@
 
 <div align="center">
 
-<img src="assets/branding/deeptutor-desktop-icon-1024.png" alt="DeepTutor Desktop 图标" width="160">
+<img src="assets/branding/deeptutor-desktop-icon-1024.png" alt="DeepTutorDesktop 图标" width="160">
 
-# DeepTutor Desktop
+# DeepTutorDesktop
 
 把 [HKUDS/DeepTutor](https://github.com/HKUDS/DeepTutor) 完整打包进一个 Tauri 桌面应用的分发层。
 
@@ -24,14 +24,14 @@
 
 ## 安装
 
-从 [GitHub Releases](https://github.com/pzehrel/DeepTutor-Desktop/releases) 下载对应平台的安装包：
+从 [GitHub Releases](https://github.com/pzehrel/DeepTutorDesktop/releases) 下载对应平台的安装包：
 
 | 平台 | 安装包 |
 |---|---|
-| macOS Apple Silicon | `DeepTutor-Desktop_<版本>_macos-apple-silicon.dmg` |
-| macOS Intel | `DeepTutor-Desktop_<版本>_macos-intel.dmg` |
-| Linux x64 | `DeepTutor-Desktop_<版本>_linux-x64.deb` / `.AppImage` |
-| Windows x64 | `DeepTutor-Desktop_<版本>_windows-x64_setup.exe` |
+| macOS Apple Silicon | `DeepTutorDesktop_<版本>_macos-apple-silicon.dmg` |
+| macOS Intel | `DeepTutorDesktop_<版本>_macos-intel.dmg` |
+| Linux x64 | `DeepTutorDesktop_<版本>_linux-x64.deb` / `.AppImage` |
+| Windows x64 | `DeepTutorDesktop_<版本>_windows-x64_setup.exe` |
 
 首次使用需要在 DeepTutor 的 Settings 中配置模型 API key 才能开始对话。用户数据（配置、知识库、记忆）写入系统应用数据目录，不写入安装目录。
 

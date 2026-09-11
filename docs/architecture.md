@@ -1,4 +1,4 @@
-# DeepTutor Desktop Architecture
+# DeepTutorDesktop Architecture
 
 ## 1. Scope
 

@@ -20,13 +20,13 @@ DeepTutor is always installed into the runtime as a pinned PyPI wheel (`deeptuto
 GitHub Actions (`.github/workflows/build.yml`) builds a four-runner matrix: macos-14 (Apple Silicon), macos-13 (Intel), ubuntu-22.04, and windows-latest. Artifacts are named per platform/architecture, and pushing a `v*` tag automatically creates a Release:
 
 ```text
-DeepTutor-Desktop_<version>_macos-apple-silicon.dmg
-DeepTutor-Desktop_<version>_macos-intel.dmg
-DeepTutor-Desktop_<version>_linux-x64.deb / .AppImage
-DeepTutor-Desktop_<version>_windows-x64_setup.exe
+DeepTutorDesktop_<version>_macos-apple-silicon.dmg
+DeepTutorDesktop_<version>_macos-intel.dmg
+DeepTutorDesktop_<version>_linux-x64.deb / .AppImage
+DeepTutorDesktop_<version>_windows-x64_setup.exe
 ```
 
-Intel and Apple Silicon macOS packages use distinct filenames and can never be confused. Local `pnpm build` keeps Tauri's default bundle names (`<productName>_<version>_<arch>.<ext>`, e.g. `DeepTutor Desktop_0.1.0_aarch64.dmg`); only CI artifacts get the platform-explicit names above.
+Intel and Apple Silicon macOS packages use distinct filenames and can never be confused. Local `pnpm build` keeps Tauri's default bundle names (`<productName>_<version>_<arch>.<ext>`, e.g. `DeepTutorDesktop_0.1.0_aarch64.dmg`); only CI artifacts get the platform-explicit names above.
 
 ## 3. Build principles
 
@@ -40,7 +40,7 @@ Intel and Apple Silicon macOS packages use distinct filenames and can never be c
 The runtime does not use Tauri `externalBin`; it is packed wholesale as resources:
 
 ```text
-DeepTutor Desktop.app/Contents/Resources/runtime/
+DeepTutorDesktop.app/Contents/Resources/runtime/
 ├── python/    # bin/python3 + site-packages (deeptutor and deeptutor_web included)
 └── node/      # official Node.js distribution (bin/node)
 ```
