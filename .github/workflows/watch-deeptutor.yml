@@ -1,0 +1,160 @@
+name: watch-deeptutor
+
+# Daily upstream watch: automatically package a new `deeptutor` release.
+# 每日上游观察: 自动打包新的 `deeptutor` 版本。
+#
+# Flow (pure GitHub Actions + scripts, zero agent involvement):
+#   1. Poll PyPI once a day for the latest `deeptutor` version and compare it
+#      with the pin recorded in scripts/build-runtime.sh.
+#   2. When a new version appears, run the deterministic compatibility gates
+#      (scripts/check-agent-compat.sh). Gate failure opens a tracking issue and
+#      leaves the feed untouched.
+#   3. On success, bump the shell's own semver patch (package.json,
+#      src-tauri/tauri.conf.json, src-tauri/Cargo.toml), repin
+#      DEEPTUTOR_VERSION, commit with a Conventional Commits subject, and push
+#      a `v*` tag. The existing build.yml tag pipeline then builds, generates
+#      the bilingual changelog, and publishes the GitHub Release unchanged.
+#
+# 流程(纯 GitHub Actions + 脚本, 零 agent 参与):
+#   1. 每日轮询一次 PyPI 的最新 `deeptutor` 版本, 与 scripts/build-runtime.sh
+#      中记录的 pin 比较。
+#   2. 出现新版本时运行确定性兼容门禁(scripts/check-agent-compat.sh);
+#      门禁失败则开跟踪 issue, 发布链路保持不动。
+#   3. 通过后自增壳自身的 semver patch(package.json、src-tauri/
+#      tauri.conf.json、src-tauri/Cargo.toml), 重设 DEEPTUTOR_VERSION, 以
+#      Conventional Commits 主题提交并推送 `v*` tag。后续构建、双语
+#      changelog 与 GitHub Release 全部复用现有 build.yml 的 tag 流水线。
+#
+# Shell hotfix releases are out of scope: commit the fix manually, bump the
+# shell version manually, and push a `v*` tag by hand.
+# 壳的热修复发布不在本流水线范围内: 手动提交修复、手动提升壳版本、手动推送
+# `v*` tag。
+on:
+  schedule:
+    - cron: '30 5 * * *' # daily at 05:30 UTC / 每日 05:30 UTC
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'deeptutor version to package (defaults to the latest on PyPI)'
+        required: false
+        type: string
+
+# Never run two watches concurrently: both would compute the same next shell
+# version and one push would be rejected.
+# 严禁两个 watch 并发: 会算出相同的下一个壳版本, 其中一次推送会被拒绝。
+concurrency:
+  group: watch-deeptutor
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full tag history seeds the next shell version; the auto-commit
+          # also needs the real branch tip, not a detached shallow snapshot.
+          # 完整 tag 历史用于推算下一个壳版本; 自动提交也需要真实分支顶端,
+          # 而非分离的浅快照。
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Resolve candidate version
+        id: candidate
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="$(curl -fsSL https://pypi.org/pypi/deeptutor/json | jq -r .info.version)"
+          fi
+          # The runtime pin is the record of what was last packaged; a
+          # metadata-only rerun with the same version must be a no-op.
+          # runtime pin 即"上次已打包"的记录; 同版本重跑必须是空操作。
+          PINNED="$(sed -nE 's/^DEEPTUTOR_VERSION="\$\{DEEPTUTOR_VERSION:-([^"]+)\}"$/\1/p' scripts/build-runtime.sh)"
+          if [ -z "$PINNED" ]; then
+            echo "cannot read DEEPTUTOR_VERSION pin from scripts/build-runtime.sh" >&2
+            exit 1
+          fi
+          echo "candidate=${VERSION} pinned=${PINNED}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$VERSION" = "$PINNED" ]; then
+            echo "upstream deeptutor ${VERSION} already packaged; nothing to do"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compatibility gates
+        if: steps.candidate.outputs.skip != 'true'
+        run: bash scripts/check-agent-compat.sh "${{ steps.candidate.outputs.version }}"
+
+      - name: Bump shell version, repin deeptutor, tag
+        if: steps.candidate.outputs.skip != 'true'
+        run: |
+          VERSION="${{ steps.candidate.outputs.version }}"
+          # Next shell version: patch + 1 on the highest existing v* tag,
+          # falling back to package.json when no tag exists yet.
+          # 下一个壳版本: 取最高 v* tag 的 patch + 1, 无 tag 时回退 package.json。
+          LATEST_TAG="$(git tag -l 'v*' | sort -V | tail -n1 || true)"
+          BASE="${LATEST_TAG#v}"
+          BASE="${BASE:-$(node -p "require('./package.json').version")}"
+          IFS='.' read -r MAJOR MINOR PATCH <<<"$BASE"
+          NEXT="${MAJOR}.${MINOR}.$((PATCH + 1))"
+          echo "releasing deeptutor ${VERSION} as shell v${NEXT}"
+
+          node -e "
+          for (const file of ['package.json', 'src-tauri/tauri.conf.json']) {
+            const fs = require('node:fs')
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'))
+            data.version = process.argv[1]
+            fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n')
+          }
+          " "$NEXT"
+
+          # Cargo.toml: only the top-level `version` is anchored at column 0,
+          # so dependency entries are never touched.
+          # Cargo.toml: 仅顶层 `version` 顶格, 不会误伤依赖条目。
+          sed -i -E "s/^version = \"[^\"]+\"/version = \"${NEXT}\"/" src-tauri/Cargo.toml
+
+          # Replace the whole pin line: the `${...}` shell default contains
+          # braces that trip BSD sed as a regex interval, and a literal
+          # whole-line substitution is portable everywhere.
+          # 整行替换 pin: `${...}` 默认值里的花括号会被 BSD sed 当作正则
+          # 区间, 整行字面替换在所有平台都可移植。
+          sed -i -E "s/^DEEPTUTOR_VERSION=.*/DEEPTUTOR_VERSION=\"\${DEEPTUTOR_VERSION:-${VERSION}}\"/" scripts/build-runtime.sh
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml scripts/build-runtime.sh
+          # feat(packaging) lands in the changelog's Added section so the
+          # release notes state which agent version shipped.
+          # feat(packaging) 会进入 changelog 的 Added 小节, 发布说明由此写明
+          # 携带的 agent 版本。
+          git commit -m "feat(packaging): upgrade embedded deeptutor to ${VERSION}" \
+            -m "zh-CN: 升级内嵌 DeepTutor 至 ${VERSION}"
+          git tag "v${NEXT}"
+          git push origin HEAD:main "v${NEXT}"
+
+      # A failed gate is invisible from inside the app, so surface it as an
+      # issue; duplicate titles keep the daily cron from spamming.
+      # 门禁失败对应用内不可见, 以 issue 呈现; 按标题去重避免每日 cron 刷屏。
+      - name: Open tracking issue on gate failure
+        if: failure() && steps.candidate.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.candidate.outputs.version }}"
+          TITLE="deeptutor ${VERSION} failed compatibility gates"
+          if [ -n "$(gh issue list --state open --search "in:title ${TITLE}" --json number --jq '.[] | .number')" ]; then
+            echo "tracking issue already exists for ${VERSION}"
+          else
+            gh issue create \
+              --title "$TITLE" \
+              --body "The daily watch tried to package deeptutor ${VERSION} but scripts/check-agent-compat.sh failed. Re-run the [watch-deeptutor workflow](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/watch-deeptutor.yml) after the upstream fix. / 每日观察尝试打包 deeptutor ${VERSION}, 但兼容门禁失败。上游修复后请重跑 [watch-deeptutor 工作流](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/watch-deeptutor.yml)。"
+          fi
