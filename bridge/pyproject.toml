@@ -22,6 +22,31 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = [ "src/deeptutor_desktop_bridge" ]
 
+# `pnpm test:bridge` invokes pytest from the repository root, where no
+# pyproject.toml exists. Without an explicit `testpaths`, pytest would treat the
+# root as rootdir and recurse into every tracked placeholder and build output,
+# including a materialized `runtime/` copy of the bundled Python environment and
+# its vendored site-packages. `testpaths` keeps discovery inside this package,
+# and `norecursedirs` additionally guards against `runtime/` being populated,
+# which the repository guidelines forbid committing but which exists locally
+# after a packaged build.
+#
+# `pnpm test:bridge` 从仓库根目录调用 pytest, 而根目录没有 pyproject.toml。
+# 若不显式声明 `testpaths`, pytest 会把根目录当作 rootdir 并递归进入所有可提交
+# 占位符与构建产物, 其中包括被实体化的 `runtime/` 内嵌 Python 环境及其 vendored
+# site-packages。`testpaths` 把收集范围限定在本包内, `norecursedirs` 则额外防御
+# `runtime/` 被填充的情况 —— 仓库规范禁止提交打包运行时, 但本地打包后它会存在。
+[tool.pytest.ini_options]
+testpaths = [ "tests" ]
+norecursedirs = [
+  ".git",
+  ".venv",
+  "dist",
+  "runtime",
+  "node_modules",
+  "target"
+]
+
 [tool.ruff]
 target-version = "py312"
 line-length = 100

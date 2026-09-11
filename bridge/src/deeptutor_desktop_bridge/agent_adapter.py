@@ -85,12 +85,16 @@ class AgentAdapter:
         calls the same value ``content``. Only fields explicitly supported by
         ``TurnRequest`` cross the adapter boundary.
 
+        The object shape is already enforced at the protocol boundary by
+        ``protocol._validate_request``, which rejects any non-object ``params``
+        before dispatch, so this helper validates fields only.
+
         ``message`` 是桌面协议的稳定字段, 而 DeepTutor 公共契约把同一值称为
         ``content``。只有 ``TurnRequest`` 明确支持的字段才能穿过适配层。
-        """
 
-        if not isinstance(params, dict):
-            raise AgentAdapterError("params must be an object")
+        对象形状已由协议边界的 ``protocol._validate_request`` 保证: 非对象
+        ``params`` 在进入分发前即被拒绝, 因此本函数只负责字段级校验。
+        """
 
         payload = dict(params)
         if "message" in payload and "content" in payload:

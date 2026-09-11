@@ -13,8 +13,8 @@
     "typecheck": "pnpm --dir frontend typecheck",
     "lint:py": "uv run --project bridge ruff check",
     "format:check:py": "uv run --project bridge ruff format --check",
-    "typecheck:py": "uv run --project bridge pyright",
-    "test:bridge": "uv run --project bridge pytest",
+    "typecheck:py": "uv run --project bridge pyright -p bridge",
+    "test:bridge": "uv run --project bridge pytest -c bridge/pyproject.toml",
     "check": "pnpm lint && pnpm typecheck && pnpm lint:py && pnpm format:check:py && pnpm typecheck:py && pnpm test:bridge",
     "postbuild": "node scripts/rename-bundles.mjs"
   },

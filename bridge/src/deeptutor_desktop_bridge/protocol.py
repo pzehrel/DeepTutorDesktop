@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import platform
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, cast
 
 from .agent_adapter import AgentAdapter, AgentAdapterError
 
@@ -38,6 +38,86 @@ def _error(
     }
 
 
+def _string_keyed(value: dict[Any, Any]) -> dict[str, Any]:
+    """Re-key a JSON object so its key type is known to be ``str``.
+
+    Re-key a JSON object so its key type is known to be ``str``.
+
+    JSON-RPC keys are always strings, but a value that arrived as ``object`` and
+    passed an ``isinstance(value, dict)`` check narrows to ``dict[Unknown,
+    Unknown]`` under strict pyright. That unknown poisons every later
+    ``.get(name)``. Rebuilding the mapping as ``dict[str, Any]`` — instead of
+    casting a ``list`` or ``dict`` to a parameter type, which would hide the
+    problem — states the guarantee once, here, where it is established.
+    """
+
+    normalized: dict[str, Any] = {}
+    for key, entry in value.items():
+        normalized[str(key)] = entry
+    return normalized
+
+
+def _request_object(request: object) -> dict[str, Any] | None:
+    """Widen an untyped JSON value to the object shape used by requests.
+
+    Widen an untyped JSON value to the object shape used by requests.
+
+    Returns ``None`` for any non-object value, matching the envelope contract
+    that a request must be a JSON object. Callers use the ``None`` branch to
+    report ``INVALID_REQUEST`` rather than raising a type error.
+    """
+
+    if not isinstance(request, dict):
+        return None
+    return _string_keyed(cast("dict[Any, Any]", request))
+
+
+def _object_option(source: dict[str, Any], name: str) -> dict[str, Any]:
+    """Return a nested JSON object, or an empty one when absent or mistyped.
+
+    Return a nested JSON object, or an empty one when absent or mistyped.
+
+    Used for optional envelope fields such as ``params`` and ``metadata``, where
+    a missing value must read identically to an empty object and a caller that
+    supplied the wrong JSON type must not crash event translation.
+    """
+
+    value: object = source.get(name)
+    if not isinstance(value, dict):
+        return {}
+    return _string_keyed(cast("dict[Any, Any]", value))
+
+
+def _answers(params: dict[str, Any]) -> list[dict[str, Any]] | None:
+    """Validate the optional ``answers`` array of ``chat.resume``.
+
+    Validate the optional ``answers`` array of ``chat.resume``.
+
+    Returns ``None`` when the field is absent or explicitly null, and raises
+    ``AgentAdapterError`` for any other shape. Declaring the narrowed return
+    type here keeps the call site free of casts: a plain ``isinstance`` guard
+    would leave the element type unknown under strict pyright.
+
+    ``chat.resume`` 的可选 ``answers`` 数组校验。字段缺失或显式为 null 时返回
+    ``None``, 其他形状一律抛 ``AgentAdapterError``。在此声明收窄后的返回类型,
+    调用处便无需 cast: 单纯使用 ``isinstance`` 守卫会让元素类型在 strict
+    pyright 下保持 unknown。
+    """
+
+    value = params.get("answers")
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise AgentAdapterError("answers must be an array")
+    items: list[dict[str, Any]] = []
+    for item in cast("list[Any]", value):
+        entry = _request_object(item)
+        if entry is None:
+            raise AgentAdapterError("each answer must be an object")
+        items.append(entry)
+    return items
+
+
 def _request_id(request: dict[str, Any]) -> Any:
     value = request.get("id")
     if value is None or (isinstance(value, (str, int)) and not isinstance(value, bool)):
@@ -46,18 +126,28 @@ def _request_id(request: dict[str, Any]) -> Any:
 
 
 def _validate_request(request: object) -> tuple[dict[str, Any], Any, str, dict[str, Any]]:
-    if not isinstance(request, dict):
+    """Validate the JSON-RPC envelope and return its normalized parts.
+
+    Validate the JSON-RPC envelope and return its normalized parts.
+
+    Returns the request object, its id (or ``None``), the method name, and the
+    params object. Raises ``ValueError`` for any envelope that violates the
+    contract, so callers can translate it into an ``INVALID_REQUEST`` error.
+    """
+
+    validated = _request_object(request)
+    if validated is None:
         raise ValueError("Request must be a JSON object")
-    request_id = _request_id(request)
-    if request.get("jsonrpc") != "2.0":
+    request_id = _request_id(validated)
+    if validated.get("jsonrpc") != "2.0":
         raise ValueError("jsonrpc must be '2.0'")
-    method = request.get("method")
+    method = validated.get("method")
     if not isinstance(method, str) or not method:
         raise ValueError("method must be a non-empty string")
-    params = request.get("params", {})
+    params = validated.get("params", {})
     if not isinstance(params, dict):
         raise ValueError("params must be an object")
-    return request, request_id, method, params
+    return validated, request_id, method, cast("dict[str, Any]", params)
 
 
 def _runtime_info(adapter: AgentAdapter) -> dict[str, Any]:
@@ -108,6 +198,7 @@ def _translate_event(event: dict[str, Any], request_id: Any) -> JsonMessage:
     """
 
     event_type = str(event.get("type") or "event")
+    metadata = _object_option(event, "metadata")
     params: JsonMessage = {
         "event": _event_name(event_type),
         "request_id": request_id,
@@ -117,12 +208,12 @@ def _translate_event(event: dict[str, Any], request_id: Any) -> JsonMessage:
         "stage": event.get("stage"),
         "content": event.get("content", ""),
         "text": event.get("content", ""),
-        "metadata": event.get("metadata") or {},
+        "metadata": metadata,
         "seq": event.get("seq"),
         "timestamp": event.get("timestamp"),
     }
     if event_type == "done":
-        params["status"] = str((event.get("metadata") or {}).get("status") or "completed")
+        params["status"] = str(metadata.get("status") or "completed")
     return {"jsonrpc": "2.0", "method": "event", "params": params}
 
 
@@ -158,7 +249,8 @@ class BridgeRuntime:
         try:
             _request, request_id, method, params = _validate_request(request)
         except ValueError as exc:
-            request_id = request.get("id") if isinstance(request, dict) else None
+            invalid = _request_object(request)
+            request_id = invalid.get("id") if invalid is not None else None
             return _error(request_id, "INVALID_REQUEST", str(exc)), False
 
         try:
@@ -198,9 +290,7 @@ class BridgeRuntime:
                 text = params.get("text")
                 if text is not None and not isinstance(text, str):
                     raise AgentAdapterError("text must be a string or null")
-                answers = params.get("answers")
-                if answers is not None and not isinstance(answers, list):
-                    raise AgentAdapterError("answers must be an array")
+                answers = _answers(params)
                 resumed = await self.adapter.submit_user_reply(turn_id, text, answers)
                 return _success(request_id, {"turn_id": turn_id, "resumed": resumed}), False
             if method == "session.list":
@@ -299,7 +389,8 @@ def handle_request(request: object) -> tuple[JsonMessage, bool]:
     try:
         _request, request_id, method, _params = _validate_request(request)
     except ValueError as exc:
-        request_id = request.get("id") if isinstance(request, dict) else None
+        invalid = _request_object(request)
+        request_id = invalid.get("id") if invalid is not None else None
         return _error(request_id, "INVALID_REQUEST", str(exc)), False
     if method == "runtime.get_info":
         return _success(request_id, _runtime_info(runtime.adapter)), False

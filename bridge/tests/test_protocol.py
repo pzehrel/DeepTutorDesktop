@@ -121,7 +121,17 @@ def test_chat_send_acknowledges_and_forwards_stream() -> None:
         assert response["result"]["turn_id"] == "turn-1"
         assert adapter.started_params == {"message": "Hi", "capability": "chat"}
 
-        await asyncio.gather(*runtime._stream_tasks.values())
+        # Waiting on the pending stream tasks is the only way to observe events
+        # forwarded by a lazily-starting async generator: `close()` cancels them
+        # before the first yield, so it cannot be used to drain them here. The
+        # private task map is therefore the contract under test, not an
+        # incidental reach-through.
+        #
+        # 等待挂起的流任务, 是观察惰性启动的 async generator 所转发事件的唯一方式:
+        # `close()` 会在首次 yield 之前取消任务, 因此无法用它排空事件。此处的私有
+        # 任务表正是被测契约本身, 而非顺手访问内部实现。
+        pending = runtime._stream_tasks.values()  # pyright: ignore[reportPrivateUsage]
+        await asyncio.gather(*pending)
         assert events[0]["params"]["event"] == "chat.delta"
         assert events[0]["params"]["text"] == "Hello"
         assert events[1]["params"]["event"] == "chat.done"
@@ -187,8 +197,25 @@ def test_cancel_resume_and_session_methods() -> None:
 
 
 def test_chat_payload_rejects_unknown_fields() -> None:
+    """Unsupported chat fields never reach the SDK.
+
+    Unsupported chat fields never reach the SDK.
+
+    Calls the adapter's field-level validator directly. ``FakeAdapter`` replaces
+    ``start_turn`` wholesale and therefore bypasses validation, so routing this
+    assertion through ``handle_request`` would exercise the fake instead of the
+    real guarantee. The validator is private only because no production caller
+    outside the adapter needs it.
+
+    ``FakeAdapter`` 整体替换了 ``start_turn``, 因此绕过了校验; 若把本断言改走
+    ``handle_request``, 实际被测的是测试替身而非真实保证。该函数之所以是私有的,
+    仅因为适配层之外没有生产调用方需要它。
+    """
+
     try:
-        AgentAdapter._turn_payload({"message": "Hi", "internal_module": "secret"})
+        AgentAdapter._turn_payload(  # pyright: ignore[reportPrivateUsage]
+            {"message": "Hi", "internal_module": "secret"}
+        )
     except Exception as exc:
         assert "Unsupported chat fields" in str(exc)
     else:

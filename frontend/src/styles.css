@@ -96,9 +96,17 @@ body {
   text-align: center;
 }
 
+/*
+ * The logo asset is a white card whose corner radius is 22% of its width.
+ * Matching that here keeps the frame flush with the artwork at any size
+ * instead of cutting across the colored shape.
+ *
+ * logo 素材是白色卡片, 其圆角半径为宽度的 22%。这里取相同比例, 任意尺寸下
+ * 描边都与图形轮廓贴合, 不会横切过图形本身。
+ */
 .loader-logo {
   border: 1px solid var(--border);
-  border-radius: 1.5rem;
+  border-radius: 22%;
   height: 96px;
   width: 96px;
 }
