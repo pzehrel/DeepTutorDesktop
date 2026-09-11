@@ -145,8 +145,8 @@ function collectCommits(excludeVersion?: string): { entries: Commit[], skipped: 
       skipped.noise++
       continue
     }
-    const zhLine = body.match(/^zh-CN:[\t ]*(\S.*)$/im)
-    if (!zhLine)
+    const zh = zhSubject(body)
+    if (!zh)
       console.error(`warn: no zh-CN subject, falling back to English: ${hash} ${subject}`)
     entries.push({
       hash,
@@ -154,10 +154,42 @@ function collectCommits(excludeVersion?: string): { entries: Commit[], skipped: 
       scope: scoped ? scoped.slice(1, -1) : '',
       breaking: Boolean(bang) || /^BREAKING CHANGE:/im.test(body),
       en: text,
-      zh: zhLine ? zhLine[1] : text,
+      zh: zh ?? text,
     })
   }
   return { entries, skipped }
+}
+
+/**
+ * Chinese subject from the commit body's `zh-CN:` line. A wrapped subject is
+ * reassembled from its continuation lines, which stop at a blank line, another
+ * trailer, or a new English conventional-commit subject — wrapped commit
+ * messages would otherwise publish a truncated Chinese entry.
+ *
+ * 从提交正文的 `zh-CN:` 行取中文主题。换行的主题会由续行重新拼接; 续行在空行、
+ * 另一个 trailer 或新的英文规范提交主题处结束 —— 否则换行的提交信息会发布出
+ * 被截断的中文条目。
+ */
+function zhSubject(body: string): string | null {
+  const lines = body.split('\n')
+  const index = lines.findIndex(l => /^zh-CN:[\t ]*\S/.test(l))
+  if (index === -1)
+    return null
+  const parts = [lines[index].replace(/^zh-CN:[\t ]*/, '').trim()]
+  for (let i = index + 1; i < lines.length; i++) {
+    const line = lines[i].trim()
+    if (!line || /^[A-Z-]+:/.test(line) || conventionalRe.test(line))
+      break
+    parts.push(line)
+  }
+  // Join CJK continuations directly, Latin ones with a space.
+  // 中文续行直接拼接, 拉丁文续行用空格连接。
+  return parts.reduce((acc, part) => {
+    if (!acc)
+      return part
+    const needsSpace = /[\w,;:]$/.test(acc) && /^\w/.test(part)
+    return needsSpace ? `${acc} ${part}` : `${acc}${part}`
+  }, '')
 }
 
 /** One bullet: scope bolded when present, short hash for traceability. */
