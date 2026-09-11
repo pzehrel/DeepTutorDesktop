@@ -150,17 +150,22 @@ jobs:
 
       - name: Build desktop bundle
         # macOS dmg creation misbehaves on GitHub runners: on Apple Silicon it
-        # usually succeeds in ~3 minutes, while the Intel runner either fails
-        # with "failed to run bundle_dmg.sh" or hangs inside bundle_dmg.sh
-        # (hdiutil attach/AppleScript) for the better part of an hour. The same
-        # commit bundles fine locally, so each attempt gets a hard timeout,
-        # stray hdiutil mounts and half-written images are cleaned up, and the
-        # step retries. Cargo and uv caches keep a retry cheap.
+        # usually succeeds in ~3 minutes, while the Intel runner spends ~18
+        # minutes in bundle_dmg.sh and then fails. tauri's `output_ok()` helper
+        # logs the script's stdout/stderr line by line at debug level and then
+        # throws those lines away, reporting only "failed to run
+        # bundle_dmg.sh" — hence RUST_LOG below to capture the script's own
+        # diagnostics (verified locally: it prints hdiutil's output).
         # macOS 的 dmg 在 GitHub runner 上表现异常: Apple Silicon 通常约 3
-        # 分钟成功, 而 Intel runner 要么报 "failed to run bundle_dmg.sh",
-        # 要么卡在 bundle_dmg.sh 内部 (hdiutil attach/AppleScript) 近一小时。
-        # 同一提交在本地可正常打包, 因此为每次尝试设硬超时, 清理残留的
-        # hdiutil 挂载与半成品镜像后重试。cargo 与 uv 缓存使重试成本很低。
+        # 分钟成功, 而 Intel runner 会在 bundle_dmg.sh 里耗掉约 18 分钟再失败。
+        # tauri 的 `output_ok()` 只把脚本的 stdout/stderr 逐行记为 debug 日志,
+        # 抛错时又丢弃这些内容, 只报 "failed to run bundle_dmg.sh" —— 因此下面
+        # 打开 RUST_LOG 以捕获脚本自身的诊断信息 (本地已验证可打印 hdiutil 输出)。
+        #
+        # Each attempt is watchdogged, keeps its full output in a log file, and
+        # cleans up the hdiutil state it leaves behind before retrying.
+        # 每次尝试都有看门狗, 完整输出留在日志文件里, 重试前清理它留下的
+        # hdiutil 状态。
         #
         # pnpm's script forwarding passes the -- separator through to the
         # tauri CLI, which then hands the flags to cargo; invoke tauri
@@ -170,11 +175,15 @@ jobs:
         # 转交 cargo; 改用 pnpm exec 直接调用 tauri 而不走 build 脚本。
         # --bundles 只接受各平台自身的目标值, 因此由 matrix 字段提供。
         shell: bash
+        env:
+          RUST_LOG: tauri_bundler=debug
         run: |
           # 15 minutes per attempt: Apple Silicon needs ~3, Intel ~8 on a good run.
           # 每次尝试 15 分钟: Apple Silicon 约 3 分钟, Intel 顺利时约 8 分钟。
           ATTEMPT_TIMEOUT=900
           ATTEMPTS=3
+          LOG_DIR="bundling-logs"
+          mkdir -p "$LOG_DIR"
 
           cleanup() {
             # Kill any bundling helpers that outlived the attempt, then detach
@@ -191,6 +200,11 @@ jobs:
             # 与残留的打包器进程。
             pkill -f 'cargo-tauri|tauri\.js' 2>/dev/null || true
             if command -v hdiutil >/dev/null 2>&1; then
+              # diskimages-helper/copy-helper keep the volume busy; a stale one
+              # makes every later attach/resize/detach fail.
+              # diskimages-helper/copy-helper 会占住卷; 残留一个就会让之后的
+              # attach/resize/detach 全部失败。
+              pkill -f 'diskimages-helper|copy-helper' 2>/dev/null || true
               local devs
               devs=$(hdiutil info 2>/dev/null | awk '
                 /^image-path/ { img = $0 }
@@ -205,7 +219,8 @@ jobs:
           }
 
           for ((attempt = 1; attempt <= ATTEMPTS; attempt++)); do
-            pnpm exec tauri build --bundles ${{ matrix.bundles }} &
+            attempt_log="$LOG_DIR/attempt-$attempt.log"
+            pnpm exec tauri build --bundles ${{ matrix.bundles }} > "$attempt_log" 2>&1 &
             build_pid=$!
             # Watchdog: SIGTERM the attempt once it exceeds the timeout.
             # 看门狗: 超过超时时间后向本次尝试发送 SIGTERM。
@@ -218,6 +233,7 @@ jobs:
             wait "$watchdog_pid" 2>/dev/null || true
 
             if [ "$status" -eq 0 ]; then
+              echo "bundling succeeded on attempt $attempt"
               exit 0
             fi
             if [ "$status" -eq 143 ] || [ "$status" -eq 137 ]; then
@@ -225,11 +241,34 @@ jobs:
             else
               echo "::warning::bundling attempt $attempt failed (exit $status)"
             fi
+            # Keep the generated script next to its log so the failing hdiutil
+            # call can be replayed offline, then show the tail inline.
+            # 把生成的脚本与日志放在一起, 便于离线复现失败的 hdiutil 调用,
+            # 并把日志尾部直接打印到 job 输出。
+            if [ -f src-tauri/target/release/bundle/dmg/bundle_dmg.sh ]; then
+              cp src-tauri/target/release/bundle/dmg/bundle_dmg.sh "$LOG_DIR/attempt-$attempt.bundle_dmg.sh" || true
+            fi
+            echo "::group::attempt $attempt output (tail)"
+            tail -n 120 "$attempt_log" || true
+            echo "::endgroup::"
             cleanup
             sleep 15
           done
           echo "::error::bundling failed after $ATTEMPTS attempts"
           exit 1
+
+      # A failed bundling run keeps every attempt's full output plus the
+      # generated bundle_dmg.sh, so the real hdiutil error can be inspected
+      # without re-running the job.
+      # 打包失败时保留每次尝试的完整输出与生成的 bundle_dmg.sh,
+      # 便于无需重跑即可查看真实的 hdiutil 报错。
+      - name: Upload bundling diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundling-logs-${{ matrix.platform }}
+          path: bundling-logs/
+          if-no-files-found: ignore
 
       # Stage installers under explicit platform/arch names — Intel and
       # Apple Silicon macOS packages must never share a filename.
