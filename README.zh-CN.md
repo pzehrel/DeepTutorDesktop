@@ -8,7 +8,7 @@
 
 把 [HKUDS/DeepTutor](https://github.com/HKUDS/DeepTutor) 完整打包进一个 Tauri 桌面应用的分发层。
 
-安装一个 `.dmg` / `.exe` / `.deb`，不预装 Python、Node.js 或 DeepTutor，打开即是完整的 DeepTutor 学习界面——聊天、知识库、可视化、设置全部可用。
+安装一个 `.dmg` / `.exe`，不预装 Python、Node.js 或 DeepTutor，打开即是完整的 DeepTutor 学习界面——聊天、知识库、可视化、设置全部可用。
 
 [安装](#安装) · [从源码构建](#从源码构建) · [开发](#开发)
 
@@ -30,7 +30,6 @@
 |---|---|
 | macOS arm64（Apple Silicon） | `DeepTutorDesktop_<版本>_macos-arm64.dmg` |
 | macOS x64（Intel） | `DeepTutorDesktop_<版本>_macos-x64.app.zip` |
-| Linux x64 | `DeepTutorDesktop_<版本>_linux-x64.deb` / `.AppImage` |
 | Windows x64 | `DeepTutorDesktop_<版本>_windows-x64_setup.exe` |
 
 首次使用需要在 DeepTutor 的 Settings 中配置模型 API key 才能开始对话。用户数据（配置、知识库、记忆）写入系统应用数据目录，不写入安装目录。

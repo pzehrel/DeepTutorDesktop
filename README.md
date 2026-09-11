@@ -8,7 +8,7 @@
 
 The complete [HKUDS/DeepTutor](https://github.com/HKUDS/DeepTutor) learning platform, packaged as one desktop app.
 
-Install a single `.dmg` / `.exe` / `.deb` — no Python, Node.js, or DeepTutor preinstalled — open the app, and land directly in the full DeepTutor interface: chat, knowledge bases, visualizations, and settings.
+Install a single `.dmg` / `.exe` — no Python, Node.js, or DeepTutor preinstalled — open the app, and land directly in the full DeepTutor interface: chat, knowledge bases, visualizations, and settings.
 
 [Install](#install) · [Build from source](#building-from-source) · [Development](#development)
 
@@ -30,7 +30,6 @@ Download the installer for your platform from [GitHub Releases](https://github.c
 |---|---|
 | macOS arm64 (Apple Silicon) | `DeepTutorDesktop_<version>_macos-arm64.dmg` |
 | macOS x64 (Intel) | `DeepTutorDesktop_<version>_macos-x64.app.zip` |
-| Linux x64 | `DeepTutorDesktop_<version>_linux-x64.deb` / `.AppImage` |
 | Windows x64 | `DeepTutorDesktop_<version>_windows-x64_setup.exe` |
 
 First use requires configuring a model API key in DeepTutor's Settings before conversations can start. User data (configuration, knowledge bases, memory) lives in the OS application-data directory, never in the install directory.
