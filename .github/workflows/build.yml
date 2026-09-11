@@ -149,13 +149,18 @@ jobs:
         run: bash scripts/build-runtime.sh ${{ matrix.target }}
 
       - name: Build desktop bundle
-        # macOS dmg creation fails intermittently on GitHub runners
-        # ("failed to run bundle_dmg.sh"); the same commit bundles fine
-        # locally and on a re-run, so retry the bundling step after clearing
-        # the bundle output. Cargo and uv caches make a retry cheap.
-        # macOS 的 dmg 在 GitHub runner 上偶发失败
-        # ("failed to run bundle_dmg.sh"); 同一提交在本地与重跑时都能成功,
-        # 因此清空打包输出后重试。cargo 与 uv 缓存让重试成本很低。
+        # macOS dmg creation misbehaves on GitHub runners: on Apple Silicon it
+        # usually succeeds in ~3 minutes, while the Intel runner either fails
+        # with "failed to run bundle_dmg.sh" or hangs inside bundle_dmg.sh
+        # (hdiutil attach/AppleScript) for the better part of an hour. The same
+        # commit bundles fine locally, so each attempt gets a hard timeout,
+        # stray hdiutil mounts and half-written images are cleaned up, and the
+        # step retries. Cargo and uv caches keep a retry cheap.
+        # macOS 的 dmg 在 GitHub runner 上表现异常: Apple Silicon 通常约 3
+        # 分钟成功, 而 Intel runner 要么报 "failed to run bundle_dmg.sh",
+        # 要么卡在 bundle_dmg.sh 内部 (hdiutil attach/AppleScript) 近一小时。
+        # 同一提交在本地可正常打包, 因此为每次尝试设硬超时, 清理残留的
+        # hdiutil 挂载与半成品镜像后重试。cargo 与 uv 缓存使重试成本很低。
         #
         # pnpm's script forwarding passes the -- separator through to the
         # tauri CLI, which then hands the flags to cargo; invoke tauri
@@ -166,15 +171,64 @@ jobs:
         # --bundles 只接受各平台自身的目标值, 因此由 matrix 字段提供。
         shell: bash
         run: |
-          for attempt in 1 2 3; do
-            if pnpm exec tauri build --bundles ${{ matrix.bundles }}; then
+          # 15 minutes per attempt: Apple Silicon needs ~3, Intel ~8 on a good run.
+          # 每次尝试 15 分钟: Apple Silicon 约 3 分钟, Intel 顺利时约 8 分钟。
+          ATTEMPT_TIMEOUT=900
+          ATTEMPTS=3
+
+          cleanup() {
+            # Kill any bundling helpers that outlived the attempt, then detach
+            # only the volumes backed by images inside our own bundle/dmg
+            # output — never touch unrelated runner mounts — and drop partial
+            # images so the next attempt starts clean.
+            # 结束存活下来的打包辅助进程, 仅卸载由本项目 bundle/dmg 产物镜像
+            # 提供的卷 (绝不动 runner 上无关的挂载), 并删除半成品镜像,
+            # 让下次尝试从干净状态开始。
+            pkill -f bundle_dmg.sh 2>/dev/null || true
+            # The CLI itself may survive the SIGTERM and keep the target dir
+            # locked; stop it and any leftover bundler process too.
+            # CLI 本身可能在 SIGTERM 后存活并继续占用 target 目录; 一并结束它
+            # 与残留的打包器进程。
+            pkill -f 'cargo-tauri|tauri\.js' 2>/dev/null || true
+            if command -v hdiutil >/dev/null 2>&1; then
+              local devs
+              devs=$(hdiutil info 2>/dev/null | awk '
+                /^image-path/ { img = $0 }
+                /^\/dev\/disk/ && img ~ /bundle\/dmg/ { print $1 }
+              ' | sort -u)
+              for dev in $devs; do
+                hdiutil detach -force "$dev" >/dev/null 2>&1 || true
+              done
+              rm -f src-tauri/target/release/bundle/dmg/rw.*.dmg
+            fi
+            rm -rf src-tauri/target/release/bundle
+          }
+
+          for ((attempt = 1; attempt <= ATTEMPTS; attempt++)); do
+            pnpm exec tauri build --bundles ${{ matrix.bundles }} &
+            build_pid=$!
+            # Watchdog: SIGTERM the attempt once it exceeds the timeout.
+            # 看门狗: 超过超时时间后向本次尝试发送 SIGTERM。
+            ( sleep "$ATTEMPT_TIMEOUT"; kill -TERM "$build_pid" 2>/dev/null ) &
+            watchdog_pid=$!
+
+            status=0
+            wait "$build_pid" || status=$?
+            kill "$watchdog_pid" 2>/dev/null || true
+            wait "$watchdog_pid" 2>/dev/null || true
+
+            if [ "$status" -eq 0 ]; then
               exit 0
             fi
-            echo "::warning::bundling attempt $attempt failed"
-            rm -rf src-tauri/target/release/bundle
+            if [ "$status" -eq 143 ] || [ "$status" -eq 137 ]; then
+              echo "::warning::bundling attempt $attempt timed out after ${ATTEMPT_TIMEOUT}s and was killed"
+            else
+              echo "::warning::bundling attempt $attempt failed (exit $status)"
+            fi
+            cleanup
             sleep 15
           done
-          echo "::error::bundling failed after 3 attempts"
+          echo "::error::bundling failed after $ATTEMPTS attempts"
           exit 1
 
       # Stage installers under explicit platform/arch names — Intel and
