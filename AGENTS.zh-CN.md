@@ -32,7 +32,7 @@
 
 ## 测试指南
 
-将 bridge 测试命名为 `test_*.py` 并放在 `bridge/tests/`。在实现旁添加协议覆盖，然后运行 `pnpm test:bridge` 或 `pnpm check`。引入非平凡行为时添加针对性的前端/Rust 测试；目前尚未定义这类测试套件。
+将 bridge 测试命名为 `test_*.py` 并放在 `bridge/tests/`。在实现旁添加协议覆盖，然后运行 `pnpm test:bridge` 或 `pnpm check`。Rust 单元测试与源码同目录放在 `src-tauri/src`（用 `cargo test` 运行）；引入非平凡的渲染器行为时补充针对性的前端测试。
 
 ## 提交与拉取请求指南
 
@@ -40,4 +40,4 @@
 
 ## 安全与配置提示
 
-保持 stdio/NDJSON 边界：协议消息写入 bridge stdout，诊断信息写入 stderr。不要添加 TCP 监听器、向渲染器开放任意 shell 权限，也不要提交机密信息、签名文件或已打包的 runtime 产物。
+保持 stdio/NDJSON 边界：协议消息写入 bridge stdout，诊断信息写入 stderr。不要绑定回环地址以外的接口（内嵌 Web 栈的回环例外由 ADR-0003 约束），不要向渲染器开放任意 shell 权限，也不要提交机密信息、签名文件或已打包的 runtime 产物。

@@ -1,8 +1,8 @@
 # ADR-0001：使用 sidecar 与 stdio JSON-RPC
 
-- 状态：Accepted
+- 状态：Accepted（"不监听 TCP"约束已被 [ADR-0003](0003-embedded-web-stack.md) 就内嵌 Web 栈修订；bridge 部分继续有效）
 - 日期：2026-09-09
-- 适用范围：DeepTutor Desktop 的首版架构
+- 适用范围：stdio bridge 与协议化访问
 
 ## 背景
 

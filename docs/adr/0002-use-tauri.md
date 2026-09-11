@@ -1,8 +1,8 @@
 # ADR-0002：Desktop Shell 采用 Tauri
 
-- 状态：Accepted
+- 状态：Accepted（"不启动 localhost HTTP"已被 [ADR-0003](0003-embedded-web-stack.md) 就内嵌 Web 栈修订；"不使用 Electron"约束继续有效）
 - 日期：2026-09-09
-- 适用范围：DeepTutor Desktop
+- 适用范围：Desktop Shell 选型
 
 ## 背景
 
@@ -14,7 +14,7 @@ Desktop Shell 采用 Tauri：
 
 - WebView Renderer 负责界面；
 - Rust Core 负责 commands/events、sidecar 生命周期和应用路径；
-- DeepTutor Bridge 作为 Tauri `externalBin` 随应用分发；
+- DeepTutor runtime（Python + Node + wheel）作为 Tauri resources 随应用分发（实现演进，原方案为 `externalBin`）；
 - Rust Core 与 bridge 通过 stdin/stdout NDJSON JSON-RPC 通信；
 - 不启动 localhost HTTP/WebSocket 服务；
 - Tauri capabilities 只允许启动固定的 bridge sidecar，不开放通用 shell 权限。

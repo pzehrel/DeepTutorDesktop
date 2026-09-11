@@ -42,8 +42,9 @@ applicable checks.
 ## Testing Guidelines
 
 Name bridge tests `test_*.py` in `bridge/tests/`. Add protocol coverage alongside the implementation,
-then run `pnpm test:bridge` or `pnpm check`. Add focused frontend/Rust tests when introducing
-non-trivial behavior; none are defined yet.
+then run `pnpm test:bridge` or `pnpm check`. Rust unit tests live beside the code in
+`src-tauri/src` (run with `cargo test`); add focused frontend tests when introducing
+non-trivial renderer behavior.
 
 ## Commit & Pull Request Guidelines
 
@@ -55,5 +56,6 @@ schemas when changing protocol or packaging behavior.
 ## Security & Configuration Tips
 
 Preserve the stdio/NDJSON boundary: protocol messages belong on bridge stdout and diagnostics on
-stderr. Do not add TCP listeners, expose arbitrary shell access to the renderer, or commit secrets,
-signing files, or packaged runtime artifacts.
+stderr. Do not bind anything beyond the loopback interface (the embedded web stack's
+loopback exception is governed by ADR-0003), do not expose arbitrary shell access to the
+renderer, and do not commit secrets, signing files, or packaged runtime artifacts.

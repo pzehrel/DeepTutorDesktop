@@ -8,7 +8,7 @@
 
 - 重写 DeepTutor 的 tools、capabilities 或 provider 实现；
 - 在 Tauri/Rust 中直接绑定 DeepTutor 的内部 Python 模块；
-- 让 agent 通过 TCP 端口暴露给本机其他程序；
+- 让 agent 暴露给本机其他程序或外部网络（内嵌 Web 栈仅绑定回环地址，见 ADR-0003）；
 - 把用户配置、记忆、知识库写入应用安装目录。
 
 ## 2. 分层
@@ -18,9 +18,10 @@
 Tauri Rust Core 负责：
 
 - 创建窗口和管理生命周期；
-- 启动、监控和终止 bridge 子进程；
+- 启动、监控和终止内嵌 DeepTutor 全栈（`deeptutor start --detach`，就绪探测后把窗口导航到回环前端 URL，退出时优雅停止）；
+- 启动、监控和终止 stdio bridge 子进程（编程式协议访问）；
 - 为 WebView Renderer 暴露最小化的 Tauri commands/events；
-- 管理应用级路径、版本和更新；
+- 管理应用级路径，并在首次启动时按系统语言/主题预置 `interface.json`；
 - 将 bridge 的结构化事件转发给 Renderer。
 
 Tauri Rust Core 不应调用 DeepTutor 的 Python 内部实现。
@@ -63,15 +64,15 @@ Desktop Bridge
 DeepTutorApp / TurnRequest / stream_turn
 ```
 
-优先使用 `DeepTutorApp` Python SDK，因为它是进程内 async facade，可以直接访问 turn、session 和流式事件。`deeptutor run --format json` 可作为简单的一次性或诊断 fallback，但它输出的是 NDJSON stream，不等同于本项目的 JSON-RPC 协议。HTTP/WebSocket API 暂不作为桌面版 transport，因为桌面版的目标是不监听 TCP 端口。
+优先使用 `DeepTutorApp` Python SDK，因为它是进程内 async facade，可以直接访问 turn、session 和流式事件。`deeptutor run --format json` 可作为简单的一次性或诊断 fallback，但它输出的是 NDJSON stream，不等同于本项目的 JSON-RPC 协议。完整 Web UI 通过内嵌栈以回环 HTTP 提供（ADR-0003）；stdio bridge 则服务于协议化、无 TCP 的编程访问。
 
 ### 2.5 Agent Runtime
 
 Agent runtime 由以下内容组成：
 
-- 独立 Python runtime；
-- 固定版本的 `deeptutor` wheel；
-- Bridge package；
+- 独立 Python runtime（python-build-standalone）；
+- 固定版本的 `deeptutor` wheel（含 `deeptutor_web` 前端产物）；
+- Node.js 官方二进制（Next.js standalone server 依赖）；
 - DeepTutor 所需的运行时资源和可选依赖。
 
 Runtime 是桌面应用的构建输入，不提交到 Git 仓库。
@@ -80,22 +81,27 @@ Runtime 是桌面应用的构建输入，不提交到 Git 仓库。
 
 ```mermaid
 sequenceDiagram
-    participant R as Renderer
+    participant R as Renderer（加载页 → DeepTutor Web UI）
     participant M as Tauri Rust Core
-    participant B as Desktop Bridge
-    participant A as DeepTutor Agent
+    participant S as 内嵌全栈（deeptutor start）
+    participant B as Desktop Bridge（可选）
 
-    R->>M: Tauri command
-    M->>B: JSON-RPC request via stdin
-    B->>A: SDK call
-    A-->>B: result or stream event
-    B-->>M: JSON-RPC response via stdout
-    M-->>R: allowlisted command response/event
+    M->>S: deeptutor start --detach（DEEPTUTOR_HOME = 应用数据目录）
+    S-->>M: system.json 记录端口 / 回环就绪
+    M-->>R: deeptutor://state（ready + URL）
+    R->>R: 窗口导航到 http://127.0.0.1:<port>（ADR-0003）
+
+    opt 编程式协议访问
+        R->>M: Tauri command
+        M->>B: JSON-RPC request via stdin
+        B-->>M: JSON-RPC response / stream event via stdout
+        M-->>R: allowlisted command response/event
+    end
 ```
 
 ## 4. 安全边界
 
-- Agent 不绑定 `127.0.0.1`、`0.0.0.0` 或其他 TCP 地址。
+- 内嵌 Web 栈仅绑定回环地址（`127.0.0.1`），不对外暴露；这是 ADR-0003 对最初"无 TCP"约束的正式修订，stdio bridge 仍保持零 TCP。
 - WebView Renderer 只调用明确注册的 Tauri commands/events。
 - Tauri capabilities 只授权固定的 sidecar、参数和资源，不开放任意 shell。
 - Bridge 的 stdin/stdout 使用 NDJSON；日志写入 stderr，不污染协议流。
@@ -120,4 +126,4 @@ Bridge 协议和 agent package 版本分别管理。agent 的内部模块变更�
 
 ## 6. 后续演进
 
-第一阶段使用 stdio JSON-RPC。只有在协议稳定、性能或多端复用确实需要时，才考虑 Unix Domain Socket、named pipe 或远程 HTTP/WebSocket。
+完整界面走内嵌回环 Web 栈（ADR-0003），协议化访问走 stdio JSON-RPC（ADR-0001）。后续只有在性能或多端复用确实需要时，才考虑 Unix Domain Socket、named pipe 等替代传输。
