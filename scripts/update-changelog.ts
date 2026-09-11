@@ -215,7 +215,15 @@ function updateChangelog(cl: ChangelogSpec, lines: string[]): { released: boolea
     console.error(`notice: no entries and ${cl.file} has manual content; leaving [Unreleased] as-is`)
     return { released: false, body: [] }
   }
-  const body = lines.length ? ['', ...lines] : releaseManual ? ['', ...manualBody] : ['', cl.placeholder]
+  // A release keeps any hand-written prose and appends the generated entries
+  // that it does not already contain, so a curated summary is never dropped
+  // by the generator and generated bullets are never duplicated.
+  // 落版本时保留手写内容, 并追加其中尚未包含的自动条目 —— 既不会让生成器
+  // 丢掉人工整理的摘要, 也不会重复生成同一条目。
+  const merged = lines.length && releaseManual
+    ? [...manualBody, '', ...subtractEntries(lines, manualBody)]
+    : lines.length ? lines : manualBody
+  const body = (lines.length || releaseManual) ? ['', ...merged] : ['', cl.placeholder]
   const date = new Date().toISOString().slice(0, 10)
   const rebuilt = releaseVersion
     ? ['## [Unreleased]', '', cl.placeholder, '', `## [${releaseVersion}] - ${date}`, ...body, '']
@@ -224,9 +232,48 @@ function updateChangelog(cl: ChangelogSpec, lines: string[]): { released: boolea
   const out = fileLines.join('\n').replace(/\n{3,}/g, '\n\n')
   if (!notesOnly) {
     writeFileSync(path, `${out.trimEnd()}\n`)
-    console.log(`updated ${cl.file}`)
+    // Progress belongs on stderr: stdout is redirected into the release notes.
+    // 进度信息走 stderr: stdout 会被重定向为 Release 正文。
+    console.error(`updated ${cl.file}`)
   }
   return { released: lines.length > 0 || releaseManual, body: body.filter(l => l.trim()) }
+}
+
+/**
+ * Generated entries minus the bullets the manual section already lists, with a
+ * group heading kept only when at least one of its bullets survives. Bullets
+ * are compared without their trailing `(hash)` — a hand-written line usually
+ * names the same change but may carry an older hash — and a heading already
+ * present in the manual section is not repeated.
+ *
+ * 从自动条目中去掉手写小节已列出的条目; 仅当某分组仍有条目保留时才保留其
+ * 标题。比较条目时忽略结尾的 `(hash)` —— 手写行通常描述同一变更但可能带
+ * 旧哈希; 手写小节已有的标题不会重复添加。
+ */
+function subtractEntries(lines: string[], manualBody: string[]): string[] {
+  const normalize = (line: string): string => line.trim().replace(/\s*\(`[0-9a-f]+`\)\s*$/, '')
+  const seen = new Set(manualBody.map(normalize))
+  const headings = new Set(manualBody.map(l => l.trim()).filter(l => l.startsWith('### ')))
+  const kept: string[] = []
+  let heading: string | null = null
+  let headingUsed = false
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (trimmed.startsWith('### ')) {
+      heading = trimmed
+      headingUsed = false
+      continue
+    }
+    if (!trimmed || seen.has(normalize(line)))
+      continue
+    if (heading && !headingUsed) {
+      if (!headings.has(heading))
+        kept.push(heading)
+      headingUsed = true
+    }
+    kept.push(line)
+  }
+  return kept
 }
 
 /** Bilingual markdown body for the GitHub Release page. */
