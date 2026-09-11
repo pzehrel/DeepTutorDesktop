@@ -35,6 +35,18 @@
 
 首次使用需要在 DeepTutor 的 Settings 中配置模型 API key 才能开始对话。用户数据（配置、知识库、记忆）写入系统应用数据目录，不写入安装目录。
 
+### macOS 首次启动
+
+`.app` 采用 ad-hoc 签名而非公证，因此 Gatekeeper 会拦下首次启动并提示"Apple 无法检查其是否包含恶意软件"。右键点按应用 →「打开」，或在「系统设置 → 隐私与安全性 → 仍要打开」中放行一次即可。
+
+在加入 bundle 签名之前构建的版本完全没有有效签名，会提示"DeepTutorDesktop.app 已损坏，无法打开。你应该将它移到废纸篓。"——安装包本身是完整的，坏的只是签名。执行一次以下命令清除隔离标记：
+
+```bash
+xattr -rd com.apple.quarantine /Applications/DeepTutorDesktop.app
+```
+
+完整说明见 [docs/packaging.zh-CN.md 第 7 节](docs/packaging.zh-CN.md#7-macos-签名与-gatekeeper)。
+
 ## 从源码构建
 
 依赖：[pnpm](https://pnpm.io)、[uv](https://docs.astral.sh/uv/)、Rust 工具链、Node.js 22+。

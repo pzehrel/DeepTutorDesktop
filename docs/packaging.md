@@ -36,7 +36,8 @@ The two macOS packages use distinct filenames and can never be confused. The `pl
 - pin the `deeptutor` version and its dependency lock;
 - build on the target architecture; never copy a host venv to another architecture;
 - never commit runtimes, wheelhouses, or large binaries to Git;
-- TODO (unimplemented): macOS codesign / notarization, SHA-256 checksums attached to Releases.
+- macOS bundles are ad-hoc signed, so Gatekeeper's signature check passes (see §7);
+- still TODO (unimplemented): Developer ID signing / notarization, SHA-256 checksums attached to Releases.
 
 ## 4. In-app resource layout
 
@@ -69,3 +70,43 @@ protocol_version: 1
 ```
 
 Any agent runtime upgrade must pass compatibility testing before entering a desktop release.
+
+## 7. macOS code signing and Gatekeeper
+
+`src-tauri/tauri.conf.json` sets `bundle.macOS.signingIdentity: "-"`, which makes Tauri ad-hoc sign the `.app` while bundling. No Apple Developer account is involved and the signature carries no team identity — but it does create a **seal**, and that seal is the only thing Gatekeeper inspects on first launch.
+
+Without it, the `.app` inherits just the ad-hoc signature Rust's linker stamps into the Mach-O executable. A linker signature declares a resource envelope, yet no `Contents/_CodeSignature/CodeResources` is ever written for the bundle, so validation always fails:
+
+```console
+$ codesign --verify --deep --strict DeepTutorDesktop.app
+DeepTutorDesktop.app: code has no resources but signature indicates they must be present
+
+$ spctl -a -vvv -t exec DeepTutorDesktop.app
+DeepTutorDesktop.app: code has no resources but signature indicates they must be present
+```
+
+macOS only runs that check on a quarantined bundle, and a browser-downloaded dmg sets `com.apple.quarantine` on every file it extracts. When the check fails the user sees the misleading **"DeepTutorDesktop.app is damaged and can't be opened. You should move it to the Trash."** The payload is intact; only the signature is broken — which is why the same `.app` launches fine straight off the mounted dmg volume, where no file is quarantined.
+
+Ad-hoc signing fixes the failure without removing the warning: `codesign --verify --deep --strict` then exits 0, and Gatekeeper falls back to the ordinary "Apple cannot check it for malicious software" rejection, which the user can accept via right-click → Open or System Settings → Privacy & Security → Open Anyway. The unbootable "damaged" dialog stops appearing. Tauri's default hardened runtime stays enabled; an ad-hoc signature with `--options runtime` still resolves and loads the embedded CPython extension modules, verified by launching the signed bundle and watching uvicorn come up.
+
+Release artifacts published before this signing was added can be rescued by dropping the quarantine flag, which is the entire obstacle when the bundle itself is intact:
+
+```bash
+xattr -rd com.apple.quarantine /Applications/DeepTutorDesktop.app
+```
+
+This is a local workaround, not a distribution strategy: it only suppresses the first-launch check and still leaves an untrusted signature executing.
+
+Removing the warning outright requires **Developer ID signing + notarization**, which is not a one-line config change. It needs a paid Apple Developer account plus CI secrets (`APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, and either `APPLE_ID` + `APPLE_PASSWORD` + `APPLE_TEAM_ID` or `APPLE_API_KEY` + `APPLE_API_ISSUER`), and notarization validates every nested Mach-O in the bundle. This bundle embeds an upstream CPython and Node.js distribution under `Contents/Resources/runtime/` (~68k files), so its executables, `.dylib`, and `.so` files must each be signed with the Developer ID before the outer bundle is sealed. Apple deprecates `--deep`, so it cannot be relied on for that pass.
+
+The bytecode cache is the one runtime write that must not land inside the bundle. Left at its default the embedded CPython compiles bytecode **into** the app, writing `__pycache__/*.pyc` under `Contents/Resources/runtime/python/lib/python3.13/`, which breaks the resource seal:
+
+```console
+$ codesign --verify DeepTutorDesktop.app
+DeepTutorDesktop.app: a sealed resource is missing or invalid
+file added: .../runtime/python/lib/python3.13/encodings/__pycache__/idna.cpython-313.pyc.4442832944
+```
+
+An ad-hoc signed bundle survives one such break: Gatekeeper assesses the app before it runs, and LaunchServices drops the quarantine flag after the first success, so later launches are not re-checked. A notarized bundle is not so forgiving — macOS re-assesses notarized apps and rejects one whose sealed resources have changed.
+
+The desktop shell therefore sets `PYTHONPYCACHEPREFIX` to `<app-data>/deeptutor/pycache` on every CLI spawn (`run_cli` in `src-tauri/src/stack.rs`); the launcher's uvicorn and Node children inherit it. The interpreter keeps caching bytecode across launches, the bundle stays byte-identical to what Tauri signed, and `codesign --verify` passes after any number of runs. The redirect makes the `.pyc` files shipped inside `runtime/current` inert (Python reads the cache only from the prefix), so the first launch after this change recompiles into the new location — measured at ~12 s to backend-ready versus ~3 s warm, a one-time cost per installation. §4's "the application install directory is read-only" now actually holds.

@@ -37,6 +37,9 @@
     "createUpdaterArtifacts": false,
     "resources": {
       "../runtime/current": "runtime/"
+    },
+    "macOS": {
+      "signingIdentity": "-"
     }
   },
   "mainBinaryName": "deeptutor-desktop"

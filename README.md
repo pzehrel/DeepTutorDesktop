@@ -35,6 +35,18 @@ Download the installer for your platform from [GitHub Releases](https://github.c
 
 First use requires configuring a model API key in DeepTutor's Settings before conversations can start. User data (configuration, knowledge bases, memory) lives in the OS application-data directory, never in the install directory.
 
+### macOS first launch
+
+The `.app` is ad-hoc signed, not notarized, so Gatekeeper refuses the first launch with *"Apple cannot check it for malicious software"*. Right-click the app → **Open**, or allow it once under System Settings → Privacy & Security → **Open Anyway**.
+
+Releases built before bundle signing was added have no valid signature at all and report *"DeepTutorDesktop.app is damaged and can't be opened. You should move it to the Trash."* — the download is intact, only its signature is broken. Clear the quarantine flag once:
+
+```bash
+xattr -rd com.apple.quarantine /Applications/DeepTutorDesktop.app
+```
+
+See [docs/packaging.md §7](docs/packaging.md#7-macos-code-signing-and-gatekeeper) for the full explanation.
+
 ## Building from source
 
 Requirements: [pnpm](https://pnpm.io), [uv](https://docs.astral.sh/uv/), a Rust toolchain, and Node.js 22+.
