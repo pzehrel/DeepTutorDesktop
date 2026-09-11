@@ -86,24 +86,22 @@ jobs:
         run: bash scripts/build-runtime.sh ${{ matrix.target }}
 
       - name: Build desktop bundle
-        # AppImage is disabled on CI: linuxdeploy dies without output even
-        # with libfuse2, NO_STRIP and APPIMAGE_EXTRACT_AND_RUN set
-        # (deb/rpm bundle fine; see tauri-apps/tauri#14796 and the
-        # in-progress bundler rewrite tauri-apps/tauri#12491). Re-enable by
-        # removing --bundles once the new bundler ships.
-        # CI 上禁用 AppImage: 即使设置了 libfuse2、NO_STRIP 与
-        # APPIMAGE_EXTRACT_AND_RUN, linuxdeploy 仍然无输出失败 (deb/rpm
-        # 打包正常; 见 tauri-apps/tauri#14796 与重写中的打包器
-        # tauri-apps/tauri#12491)。待新打包器发布后移除 --bundles 恢复。
-        env:
-          NO_STRIP: true
-          APPIMAGE_EXTRACT_AND_RUN: '1'
         # pnpm's script forwarding passes the -- separator through to the
         # tauri CLI, which then hands the flags to cargo; invoke tauri
-        # directly via pnpm exec instead of the "build" script.
+        # directly via pnpm exec instead of the "build" script. No --bundles
+        # override: the flag only accepts per-platform values (e.g. msi/nsis
+        # on Windows), so let tauri.conf.json's "targets": "all" apply. When
+        # the Linux job returns, restrict it with `--bundles deb,rpm` —
+        # AppImage/linuxdeploy fails on CI (tauri-apps/tauri#14796, rewrite
+        # in progress tauri-apps/tauri#12491).
         # pnpm 的脚本转发会把 -- 分隔符一并传给 tauri CLI, 导致标志被
         # 转交 cargo; 改用 pnpm exec 直接调用 tauri 而不走 build 脚本。
-        run: pnpm exec tauri build --bundles ${{ runner.os == 'Linux' && 'deb,rpm' || 'all' }}
+        # 不覆盖 --bundles: 该标志只接受各平台自身的目标值 (如 Windows
+        # 的 msi/nsis), 交由 tauri.conf.json 的 "targets": "all" 生效。
+        # Linux job 恢复时需限制为 `--bundles deb,rpm` —— AppImage/
+        # linuxdeploy 在 CI 上失败 (tauri-apps/tauri#14796, 打包器重写中
+        # tauri-apps/tauri#12491)。
+        run: pnpm exec tauri build
 
       # Stage installers under explicit platform/arch names — Intel and
       # Apple Silicon macOS packages must never share a filename.
