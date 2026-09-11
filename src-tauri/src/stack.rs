@@ -361,19 +361,39 @@ fn prepend_node_bin(runtime_dir: &Path) -> String {
     format!("{}:{}", node_bin.to_string_lossy(), current)
 }
 
-/// Resolve the frontend port recorded by the launcher in the home settings.
+/// Resolve the frontend port from the detached launcher's ready marker.
 ///
-/// Resolve the frontend port recorded by the launcher in the home settings.
+/// `data/user/runtime/launcher.json` is rewritten by `_mark_detached_ready` on
+/// every `start` and carries the ports the stack actually bound after conflict
+/// resolution, so it is the authoritative source. `data/user/settings/
+/// system.json` is not: it only receives ports through the launcher's
+/// interactive conflict prompt, so on a normal install it keeps the shipped
+/// defaults (backend 8001, frontend 3782) forever. Polling it made the core
+/// wait on a port nothing listens on until `READY_TIMEOUT` (180 s) elapsed and
+/// report "frontend ... did not become ready", while the real frontend was
+/// already serving on the launcher's port. A marker whose `status` is not yet
+/// `"ready"` yields no port, which keeps `wait_for_port` polling.
 ///
-/// 从 home 目录的 system.json 读取 launcher 记录的前端端口。
+/// 从 detached launcher 的就绪标记解析前端端口。
+/// `data/user/runtime/launcher.json` 由 `_mark_detached_ready` 在每次
+/// `start` 时重写, 记录的是经过冲突解析后栈实际绑定的端口, 因此是权威来源。
+/// `data/user/settings/system.json` 不是: 它只在 launcher 的交互式冲突提示中
+/// 才会写入端口, 正常安装下永远停留在出厂默认(后端 8001, 前端 3782)。
+/// 轮询它会让核心空等一个无人监听的端口, 直到 `READY_TIMEOUT`(180 秒)耗尽后
+/// 报 "frontend ... did not become ready", 而真正的前端早已在 launcher 的端口
+/// 上提供服务。`status` 尚不为 `"ready"` 的标记不返回端口, 使 `wait_for_port`
+/// 继续轮询。
 fn frontend_port(home: &Path) -> Option<u16> {
-    let settings = home
+    let marker = home
         .join("data")
         .join("user")
-        .join("settings")
-        .join("system.json");
-    let raw = std::fs::read_to_string(settings).ok()?;
+        .join("runtime")
+        .join("launcher.json");
+    let raw = std::fs::read_to_string(marker).ok()?;
     let value: Value = serde_json::from_str(&raw).ok()?;
+    if value.get("status").and_then(Value::as_str) != Some("ready") {
+        return None;
+    }
     value
         .get("frontend_port")
         .and_then(Value::as_u64)
@@ -416,8 +436,10 @@ async fn start_stack(app: &AppHandle) -> Result<String, String> {
     )
     .await?;
 
-    // The launcher writes the resolved ports into system.json once it boots.
-    // launcher 启动后会把解析出的端口写入 system.json。
+    // The launcher rewrites its ready marker (launcher.json) with the resolved
+    // ports once the stack is up; wait_for_port polls that marker.
+    // launcher 在栈就绪后会用解析出的端口重写就绪标记(launcher.json);
+    // wait_for_port 轮询的就是这个标记。
     let port = wait_for_port(&home).await?;
     let url = format!("http://127.0.0.1:{port}");
     wait_for_http(&url).await?;
@@ -510,8 +532,46 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reads_frontend_port_from_system_json() {
+    fn reads_frontend_port_from_launcher_marker() {
         let dir = std::env::temp_dir().join("dt-stack-test-home");
+        let runtime = dir.join("data").join("user").join("runtime");
+        std::fs::create_dir_all(&runtime).unwrap();
+        std::fs::write(
+            runtime.join("launcher.json"),
+            r#"{"status": "ready", "backend_port": 39118, "frontend_port": 39117}"#,
+        )
+        .unwrap();
+        assert_eq!(frontend_port(&dir), Some(39117));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn launcher_not_ready_yields_no_port() {
+        // While the launcher is still booting the marker exists but is not
+        // "ready" yet; the core must keep polling instead of binding to a
+        // port the stack may never take.
+        // launcher 尚在启动时标记已存在但还不是 "ready"; 核心应继续轮询,
+        // 而不是绑定到栈可能最终不会使用的端口。
+        let dir = std::env::temp_dir().join("dt-stack-test-starting-home");
+        let runtime = dir.join("data").join("user").join("runtime");
+        std::fs::create_dir_all(&runtime).unwrap();
+        std::fs::write(
+            runtime.join("launcher.json"),
+            r#"{"status": "starting", "backend_port": 39118, "frontend_port": 39117}"#,
+        )
+        .unwrap();
+        assert_eq!(frontend_port(&dir), None);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn stale_system_json_defaults_are_ignored() {
+        // A pre-existing system.json still carrying the shipped defaults
+        // (frontend 3782) must never satisfy the port lookup: only the
+        // launcher's ready marker reflects what actually listens.
+        // 仍带着出厂默认(前端 3782)的旧 system.json 绝不能让端口查找命中:
+        // 只有 launcher 的就绪标记反映实际监听的端口。
+        let dir = std::env::temp_dir().join("dt-stack-test-stale-home");
         let settings = dir.join("data").join("user").join("settings");
         std::fs::create_dir_all(&settings).unwrap();
         std::fs::write(
@@ -519,7 +579,7 @@ mod tests {
             r#"{"backend_port": 8001, "frontend_port": 3782}"#,
         )
         .unwrap();
-        assert_eq!(frontend_port(&dir), Some(3782));
+        assert_eq!(frontend_port(&dir), None);
         std::fs::remove_dir_all(&dir).ok();
     }
 
