@@ -107,7 +107,7 @@ export default function App() {
   return (
     <main className="loader">
       <img src="/icon.png" alt="" className="loader-logo" />
-      <h1>DeepTutor</h1>
+      <h1>DeepTutor Desktop</h1>
       {state.status === 'failed'
         ? (
             <div className="loader-error">

@@ -1,0 +1,12 @@
+DeepTutor Desktop logo concept
+Generated using the built-in imagegen tool.
+Final asset: deeptutor-desktop-logo-v2-white.png
+Status: white-background raster concept; no alpha transparency. Not installed as the application icon.
+Reference: https://github.com/HKUDS/DeepTutor/tree/main/assets/figs/logo
+Design: D-shaped open book, learner silhouette, knowledge spark, blue-to-apricot gradient.
+
+Final edit prompt:
+Use case: precise-object-edit
+Asset type: DeepTutor Desktop logo design presentation
+Input images: Image 1 is the edit target.
+Primary request: Replace every gray checkerboard square and every background texture with a perfectly uniform pure white background (#FFFFFF), including all holes and spaces inside the logo. Keep the blue-to-apricot D-shaped open-book logo, learner silhouette and four-point knowledge spark intact. Preserve geometry, composition, position, proportions and colors. Crisp clean flat vector-like edges. Single centered mark on pure white, no checkerboard anywhere, no textures, no shadows, no text, no new elements. This is an opaque white-background logo design, not a transparency preview.
