@@ -9,8 +9,58 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Pushing a `v<version>` tag is the release action: this job writes the tag's
+  # version into every manifest, commits it to main, and the build jobs then
+  # build that commit — so nobody edits version numbers by hand.
+  # 推送 `v<version>` tag 即为发布动作: 本 job 把 tag 的版本写入所有清单
+  # 文件并提交到 main, 构建 job 随后构建该提交 —— 版本号无需手工修改。
+  version:
+    name: version
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Write the tag version into every manifest
+        id: bump
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          node scripts/set-version.ts "$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # `[skip ci]` keeps this bookkeeping commit from starting a second build.
+      # `[skip ci]` 阻止这次记账提交触发第二轮构建。
+      - name: Commit the version bump to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json frontend/package.json src-tauri/tauri.conf.json \
+            src-tauri/Cargo.toml src-tauri/Cargo.lock
+          if git diff --cached --quiet; then
+            echo "version already ${{ steps.bump.outputs.version }}"
+          else
+            git commit -m "chore(release): set version to ${{ steps.bump.outputs.version }} [skip ci]" \
+              -m "zh-CN: 发布前将版本号置为 ${{ steps.bump.outputs.version }}"
+            git push origin HEAD:main
+          fi
+
   build:
     name: ${{ matrix.platform }}
+    needs: version
+    # Run for every non-tag event too, where the `version` job is skipped.
+    # 非 tag 事件下 `version` job 会被跳过, 此时仍需构建。
+    if: always() && !cancelled()
     strategy:
       fail-fast: false
       matrix:
@@ -35,7 +85,13 @@ jobs:
           - {os: windows-latest, target: win32-x64, platform: windows-x64}
     runs-on: ${{ matrix.os }}
     steps:
+      # On a tag the version commit lives on main, so build main rather than
+      # the tagged commit; ordinary pushes and PRs build their own ref.
+      # tag 推送时版本提交位于 main, 因此构建 main 而非 tag 提交;
+      # 普通 push 与 PR 仍构建各自 ref。
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ startsWith(github.ref, 'refs/tags/v') && 'main' || github.ref }}
 
       - uses: pnpm/action-setup@v4
 
@@ -145,15 +201,18 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [version, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      # Full history and tags feed the changelog generator.
-      # 双语更新日志生成需要完整历史与 tag。
+      # Full history and tags feed the changelog generator. The build ran on
+      # main (see the build job), so the changelog commit lands on top of it.
+      # 双语更新日志生成需要完整历史与 tag。构建基于 main (见 build job),
+      # 因此 changelog 提交叠加在其之上。
       - uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
@@ -176,9 +235,9 @@ jobs:
 
       # Push the published changelog back to main so the repo copy stays
       # authoritative; skipped when the tag is re-run with nothing to change.
-      # The checkout is a detached HEAD at the tag, so push to main explicitly.
+      # `[skip ci]` keeps the bookkeeping commit from starting another build.
       # 将落版后的 changelog 推回 main, 保持仓库内副本为权威版本;
-      # 重跑 tag 且无变化时自动跳过。tag 检出为分离 HEAD, 显式推送到 main。
+      # 重跑 tag 且无变化时自动跳过。`[skip ci]` 阻止记账提交再次触发构建。
       - name: Commit changelog update
         run: |
           git config user.name "github-actions[bot]"
@@ -187,7 +246,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "changelog already up to date"
           else
-            git commit -m "chore(release): publish changelog for ${GITHUB_REF_NAME}" \
+            git commit -m "chore(release): publish changelog for ${GITHUB_REF_NAME} [skip ci]" \
               -m "zh-CN: 发布 ${GITHUB_REF_NAME} 双语更新日志"
             git push origin HEAD:main
           fi

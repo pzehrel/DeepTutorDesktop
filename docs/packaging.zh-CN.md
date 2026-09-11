@@ -17,16 +17,17 @@ DeepTutor 始终以锁定版本的 PyPI wheel（`deeptutor==<version>`）作为�
 
 ## 2. CI 打包
 
-GitHub Actions（`.github/workflows/build.yml`）以四平台矩阵构建：macos-14（Apple Silicon）、macos-13（Intel）、ubuntu-22.04、windows-latest。产物按平台/架构命名，推送 `v*` 标签时自动创建 Release：
+GitHub Actions（`.github/workflows/build.yml`）以 macos-14（Apple Silicon）、macos-15-intel（Intel）与 windows-latest 矩阵构建；Linux 任务暂时停用（deb/rpm 打包正常，AppImage 受阻）。产物按平台/架构命名。
+
+推送 `v<version>` 标签即为完整发布流程：`version` 任务通过 `scripts/set-version.ts` 将该版本写入所有清单文件并提交到 main（带 `[skip ci]`），构建矩阵基于该提交构建，`release` 任务随后落版两份 changelog、推回 main 并创建 GitHub Release：
 
 ```text
 DeepTutorDesktop_<version>_macos-apple-silicon.dmg
 DeepTutorDesktop_<version>_macos-intel.dmg
-DeepTutorDesktop_<version>_linux-x64.deb / .AppImage
 DeepTutorDesktop_<version>_windows-x64_setup.exe
 ```
 
-Intel 与 Apple Silicon 的 macOS 包使用不同文件名，不会混淆。本地 `pnpm build` 保持 Tauri 默认产物名（`<productName>_<version>_<arch>.<ext>`，如 `DeepTutorDesktop_0.1.0_aarch64.dmg`）；仅 CI 产物使用上述平台明确命名。
+Intel 与 Apple Silicon 的 macOS 包使用不同文件名，不会混淆。本地 `pnpm build` 保持 Tauri 默认产物名（`<productName>_<version>_<arch>.<ext>`，如 `DeepTutorDesktop_0.0.1_aarch64.dmg`）；仅 CI 产物使用上述平台明确命名。
 
 ## 3. 构建原则
 
