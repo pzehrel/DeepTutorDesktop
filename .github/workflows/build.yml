@@ -178,10 +178,19 @@ jobs:
         env:
           RUST_LOG: tauri_bundler=debug
         run: |
-          # 15 minutes per attempt: Apple Silicon needs ~3, Intel ~8 on a good run.
-          # 每次尝试 15 分钟: Apple Silicon 约 3 分钟, Intel 顺利时约 8 分钟。
-          ATTEMPT_TIMEOUT=900
-          ATTEMPTS=3
+          # A hard cap must exceed the legitimate worst case, otherwise the
+          # watchdog would kill work that was merely slow: on the Intel runner
+          # a dmg attempt spends ~18 minutes before it even reports an error,
+          # and a healthy Intel dmg would need that much or more. 45 minutes
+          # therefore only ever catches a genuine hang, and the heartbeat keeps
+          # the run observable meanwhile. Two attempts bound the worst case.
+          # 硬上限必须高于合理的耗时上限, 否则看门狗会误杀「只是慢」的任务:
+          # Intel runner 上单次 dmg 在报错前就要耗掉约 18 分钟, 而一次正常的
+          # Intel dmg 只会更久。因此设为 45 分钟, 只用于捕获真正的卡死,
+          # 期间用心跳日志保持可观测。两次尝试用于兜住最坏情况。
+          ATTEMPT_TIMEOUT=2700
+          KILL_GRACE=60
+          ATTEMPTS=2
           LOG_DIR="bundling-logs"
           mkdir -p "$LOG_DIR"
 
@@ -220,17 +229,49 @@ jobs:
 
           for ((attempt = 1; attempt <= ATTEMPTS; attempt++)); do
             attempt_log="$LOG_DIR/attempt-$attempt.log"
+            : > "$attempt_log"
             pnpm exec tauri build --bundles ${{ matrix.bundles }} > "$attempt_log" 2>&1 &
             build_pid=$!
-            # Watchdog: SIGTERM the attempt once it exceeds the timeout.
-            # 看门狗: 超过超时时间后向本次尝试发送 SIGTERM。
-            ( sleep "$ATTEMPT_TIMEOUT"; kill -TERM "$build_pid" 2>/dev/null ) &
+            attempt_started=$SECONDS
+
+            # Watchdog: the bundler's children (pnpm -> node -> tauri ->
+            # bundle_dmg.sh -> hdiutil) do not reliably die on a SIGTERM sent
+            # to the pnpm process, so escalate: SIGTERM at the timeout, then
+            # SIGKILL that process and any surviving bundler process.
+            # 看门狗: 打包链路的子进程 (pnpm -> node -> tauri ->
+            # bundle_dmg.sh -> hdiutil) 并不会可靠地随 pnpm 进程收到 SIGTERM
+            # 而结束, 因此逐级升级: 超时先 SIGTERM, 宽限后 SIGKILL 该进程
+            # 并结束所有存活的打包进程。
+            (
+              sleep "$ATTEMPT_TIMEOUT"
+              kill -TERM "$build_pid" 2>/dev/null || exit 0
+              sleep "$KILL_GRACE"
+              kill -KILL "$build_pid" 2>/dev/null || true
+              pkill -KILL -f 'cargo-tauri|tauri\.js' 2>/dev/null || true
+              pkill -KILL -f 'bundle_dmg.sh' 2>/dev/null || true
+            ) &
             watchdog_pid=$!
+
+            # Heartbeat: print the tail of the attempt log every 5 minutes so a
+            # legitimately slow Intel run stays observable in the CI output.
+            # 心跳: 每 5 分钟打印一次日志尾部, 让本就较慢的 Intel 任务在 CI
+            # 输出里保持可见。
+            (
+              while sleep 300; do
+                printf '%s attempt %s still running (%ss elapsed); last line: %s\n' \
+                  "$(date -u +%H:%M:%S)" "$attempt" "$((SECONDS - attempt_started))" \
+                  "$(tail -n 1 "$attempt_log" 2>/dev/null)"
+              done
+            ) &
+            heartbeat_pid=$!
 
             status=0
             wait "$build_pid" || status=$?
-            kill "$watchdog_pid" 2>/dev/null || true
+            kill "$watchdog_pid" "$heartbeat_pid" 2>/dev/null || true
             wait "$watchdog_pid" 2>/dev/null || true
+            wait "$heartbeat_pid" 2>/dev/null || true
+            elapsed=$((SECONDS - attempt_started))
+            echo "attempt $attempt finished after ${elapsed}s with exit $status"
 
             if [ "$status" -eq 0 ]; then
               echo "bundling succeeded on attempt $attempt"
