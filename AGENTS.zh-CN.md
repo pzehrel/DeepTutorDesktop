@@ -36,7 +36,7 @@
 
 ## 提交与拉取请求指南
 
-使用简短的祈使句提交主题（例如 `Add runtime health command`），并让提交保持单一目的。拉取请求应说明受影响的层、在适用时关联 issue、列出验证命令，并为渲染器/UI 更改附上截图或录屏。更改协议或打包行为时更新相关文档或 schema。
+每条提交（包括 agent 产生的提交）都必须使用 Conventional Commits 主题，并携带必需的 `zh-CN:` 双语 trailer，遵循 [.agents/rules/commits.zh-CN.md](.agents/rules/commits.zh-CN.md)；`scripts/update-changelog.ts` 依靠解析提交来生成两份 changelog，不符合规范或缺 trailer 的提交不会进入发布说明。让提交保持单一目的。拉取请求应说明受影响的层、在适用时关联 issue、列出验证命令，并为渲染器/UI 更改附上截图或录屏。更改协议或打包行为时更新相关文档或 schema。
 
 ## 安全与配置提示
 

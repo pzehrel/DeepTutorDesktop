@@ -48,10 +48,13 @@ non-trivial renderer behavior.
 
 ## Commit & Pull Request Guidelines
 
-Use short imperative commit subjects (for example, `Add runtime health command`) and keep commits
-focused. Pull requests should explain the affected layer, link issues when applicable, list
-verification commands, and include screenshots or recordings for renderer/UI changes. Update docs or
-schemas when changing protocol or packaging behavior.
+Write every commit — including agent-made commits — as a Conventional Commits subject with the
+mandatory `zh-CN:` bilingual trailer, following [.agents/rules/commits.md](.agents/rules/commits.md);
+`scripts/update-changelog.ts` parses commits to build both changelogs, so non-conventional or
+trailer-less commits drop out of the release notes. Keep commits focused. Pull requests should
+explain the affected layer, link issues when applicable, list verification commands, and include
+screenshots or recordings for renderer/UI changes. Update docs or schemas when changing protocol or
+packaging behavior.
 
 ## Security & Configuration Tips
 

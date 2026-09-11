@@ -102,12 +102,49 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Full history and tags feed the changelog generator.
+      # 双语更新日志生成需要完整历史与 tag。
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
 
+      # Cut the version section in both changelog files and capture the
+      # bilingual release notes for the GitHub Release body.
+      # 在两份 changelog 中落版本小节, 并捕获双语 release notes
+      # 供发布页正文使用。
+      - name: Update changelog
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          node scripts/update-changelog.ts --release "$VERSION" > release-notes.md
+
+      # Push the published changelog back to main so the repo copy stays
+      # authoritative; skipped when the tag is re-run with nothing to change.
+      # The checkout is a detached HEAD at the tag, so push to main explicitly.
+      # 将落版后的 changelog 推回 main, 保持仓库内副本为权威版本;
+      # 重跑 tag 且无变化时自动跳过。tag 检出为分离 HEAD, 显式推送到 main。
+      - name: Commit changelog update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md CHANGELOG.zh-CN.md
+          if git diff --cached --quiet; then
+            echo "changelog already up to date"
+          else
+            git commit -m "chore(release): publish changelog for ${GITHUB_REF_NAME}" \
+              -m "zh-CN: 发布 ${GITHUB_REF_NAME} 双语更新日志"
+            git push origin HEAD:main
+          fi
+
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
-          generate_release_notes: true
+          body_path: release-notes.md

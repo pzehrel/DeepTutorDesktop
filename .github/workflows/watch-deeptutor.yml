@@ -35,7 +35,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'deeptutor version to package (defaults to the latest on PyPI)'
+        description: deeptutor version to package, defaults to the latest on PyPI
         required: false
         type: string
 
