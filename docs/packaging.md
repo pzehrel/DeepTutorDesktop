@@ -22,14 +22,14 @@ GitHub Actions (`.github/workflows/build.yml`) builds a matrix of macos-14 (Appl
 Pushing a `v<version>` tag is the whole release procedure: the `version` job writes that version into every manifest via `scripts/set-version.ts` and commits it to main (with `[skip ci]`), the build matrix builds that commit, and the `release` job cuts both changelogs, pushes them back to main, and publishes a GitHub Release:
 
 ```text
-DeepTutorDesktop_<version>_macos-apple-silicon.dmg
-DeepTutorDesktop_<version>_macos-intel.app.zip
+DeepTutorDesktop_<version>_macos-arm64.dmg
+DeepTutorDesktop_<version>_macos-x64.app.zip
 DeepTutorDesktop_<version>_windows-x64_setup.exe
 ```
 
 Intel ships the zipped `.app` rather than a dmg: creating a dmg image of the ~890MB, 68k-file bundle on the Intel runner either took ~10 minutes or died in `hdiutil detach` ("timeout for DiskArbitration expired"), while `ditto -c -k` produces the same payload in a minute or two without touching `hdiutil`.
 
-Intel and Apple Silicon macOS packages use distinct filenames and can never be confused. Local `pnpm build` keeps Tauri's default bundle names (`<productName>_<version>_<arch>.<ext>`, e.g. `DeepTutorDesktop_0.0.1_aarch64.dmg`); only CI artifacts get the platform-explicit names above.
+The two macOS packages use distinct filenames and can never be confused. The `platform` label of the build matrix feeds names only — artifacts, packages, and the job title — and selects neither the runner (`os` does) nor the architecture (the runner's own host does), so it is a naming choice rather than a build input. Its values follow the community `{os}-{arch}` asset convention with `arm64`/`x64` tokens — `macos-arm64`, `macos-x64`, the unchanged `windows-x64`, and `linux-x64` for the paused Linux job. Those are the tokens most macOS and Windows projects publish (`AFFiNE-…-macos-arm64.dmg`, `PowerToysSetup-…-x64.exe`), and they line up with the runtime target ids (`darwin-arm64`, `win32-x64`) and with Tauri's own default tokens (`aarch64`, `x64`). Branding words such as `apple-silicon`/`intel` are avoided deliberately: tooling cannot map them to an architecture, so every consumer would need its own lookup table. Local `pnpm build` keeps Tauri's default bundle names (`<productName>_<version>_<arch>.<ext>`, e.g. `DeepTutorDesktop_0.0.1_aarch64.dmg`); only CI artifacts get the platform-explicit names above.
 
 ## 3. Build principles
 

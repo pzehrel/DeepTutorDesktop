@@ -28,8 +28,8 @@
 
 | 平台 | 安装包 |
 |---|---|
-| macOS Apple Silicon | `DeepTutorDesktop_<版本>_macos-apple-silicon.dmg` |
-| macOS Intel | `DeepTutorDesktop_<版本>_macos-intel.dmg` |
+| macOS arm64（Apple Silicon） | `DeepTutorDesktop_<版本>_macos-arm64.dmg` |
+| macOS x64（Intel） | `DeepTutorDesktop_<版本>_macos-x64.app.zip` |
 | Linux x64 | `DeepTutorDesktop_<版本>_linux-x64.deb` / `.AppImage` |
 | Windows x64 | `DeepTutorDesktop_<版本>_windows-x64_setup.exe` |
 

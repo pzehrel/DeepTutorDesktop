@@ -115,8 +115,29 @@ jobs:
           # zip: 它的 dmg 尝试为这个 890MB/6.8 万文件的应用创建镜像约 10 分钟
           # 后死在 `hdiutil detach` ("timeout for DiskArbitration expired"),
           # 而 `ditto -c -k` 只需一两分钟且完全不碰 hdiutil。
-          - {os: macos-14, target: darwin-arm64, platform: macos-apple-silicon, bundles: 'app,dmg'}
-          - {os: macos-15-intel, target: darwin-x64, platform: macos-intel, bundles: 'app'}
+          #
+          # `platform` appears only in artifact, package and job names — the
+          # runner comes from `os` and the architecture from whatever host that
+          # runner is — so it is a naming choice, not a build input. It follows
+          # the community `{os}-{arch}` asset convention with `arm64`/`x64`
+          # tokens: those are the tokens most macOS/Windows projects publish
+          # (`AFFiNE-...-macos-arm64.dmg`, `PowerToysSetup-...-x64.exe`), and
+          # they line up with the runtime target ids (`darwin-arm64`,
+          # `win32-x64`) and with Tauri's own default tokens (`aarch64`, `x64`).
+          # Branding words such as `apple-silicon`/`intel` are deliberately
+          # avoided: tooling cannot map them to an architecture, so every
+          # consumer would need its own lookup table.
+          # `platform` 只出现在 artifact、包名与任务名里 —— runner 由 `os` 决定,
+          # 架构由该 runner 的宿主机决定 —— 因此它只是命名选择, 不是构建输入。
+          # 它采用社区通行的 `{os}-{arch}` 命名与 `arm64`/`x64` token: 这两个
+          # token 是绝大多数 macOS/Windows 项目发布的形态
+          # (`AFFiNE-...-macos-arm64.dmg`、`PowerToysSetup-...-x64.exe`),
+          # 也与 runtime target 标识 (`darwin-arm64`、`win32-x64`) 及 Tauri 自身
+          # 的默认 token (`aarch64`、`x64`) 对齐。刻意避开 `apple-silicon`/
+          # `intel` 这类品牌词: 工具链无法把它们映射到架构, 每个消费方都得自己
+          # 维护一张映射表。
+          - {os: macos-14, target: darwin-arm64, platform: macos-arm64, bundles: 'app,dmg'}
+          - {os: macos-15-intel, target: darwin-x64, platform: macos-x64, bundles: 'app'}
           # Linux builds are paused for now per product decision; re-add
           # `- {os: ubuntu-22.04, target: linux-x64, platform: linux-x64, bundles: 'deb,rpm'}`
           # to resume (deb/rpm bundling worked; only AppImage was blocked,

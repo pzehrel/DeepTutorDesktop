@@ -28,8 +28,8 @@ Download the installer for your platform from [GitHub Releases](https://github.c
 
 | Platform | Installer |
 |---|---|
-| macOS Apple Silicon | `DeepTutorDesktop_<version>_macos-apple-silicon.dmg` |
-| macOS Intel | `DeepTutorDesktop_<version>_macos-intel.dmg` |
+| macOS arm64 (Apple Silicon) | `DeepTutorDesktop_<version>_macos-arm64.dmg` |
+| macOS x64 (Intel) | `DeepTutorDesktop_<version>_macos-x64.app.zip` |
 | Linux x64 | `DeepTutorDesktop_<version>_linux-x64.deb` / `.AppImage` |
 | Windows x64 | `DeepTutorDesktop_<version>_windows-x64_setup.exe` |
 

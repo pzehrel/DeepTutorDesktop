@@ -22,14 +22,14 @@ GitHub Actions（`.github/workflows/build.yml`）以 macos-14（Apple Silicon）
 推送 `v<version>` 标签即为完整发布流程：`version` 任务通过 `scripts/set-version.ts` 将该版本写入所有清单文件并提交到 main（带 `[skip ci]`），构建矩阵基于该提交构建，`release` 任务随后落版两份 changelog、推回 main 并创建 GitHub Release：
 
 ```text
-DeepTutorDesktop_<version>_macos-apple-silicon.dmg
-DeepTutorDesktop_<version>_macos-intel.app.zip
+DeepTutorDesktop_<version>_macos-arm64.dmg
+DeepTutorDesktop_<version>_macos-x64.app.zip
 DeepTutorDesktop_<version>_windows-x64_setup.exe
 ```
 
 Intel 改为发布 zip 压缩的 `.app` 而非 dmg：在 Intel runner 上为这个约 890MB、6.8 万文件的包创建 dmg 镜像要么耗时约 10 分钟，要么死在 `hdiutil detach`（"timeout for DiskArbitration expired"）；而 `ditto -c -k` 只需一两分钟即可产出同样的载荷，且完全不经过 `hdiutil`。
 
-Intel 与 Apple Silicon 的 macOS 包使用不同文件名，不会混淆。本地 `pnpm build` 保持 Tauri 默认产物名（`<productName>_<version>_<arch>.<ext>`，如 `DeepTutorDesktop_0.0.1_aarch64.dmg`）；仅 CI 产物使用上述平台明确命名。
+两个 macOS 包使用不同文件名，不会混淆。构建矩阵里的 `platform` 标签只参与命名 —— artifact、包名与任务名 —— 既不选择 runner（由 `os` 决定），也不选择架构（由该 runner 的宿主机决定），因此它只是命名选择而非构建输入。其取值采用社区通行的 `{os}-{arch}` 命名与 `arm64`/`x64` token：`macos-arm64`、`macos-x64`、保持不变的 `windows-x64`，以及暂缓的 Linux 任务所用的 `linux-x64`。这两个 token 是绝大多数 macOS 与 Windows 项目发布的形态（`AFFiNE-…-macos-arm64.dmg`、`PowerToysSetup-…-x64.exe`），也与 runtime target 标识（`darwin-arm64`、`win32-x64`）及 Tauri 自身的默认 token（`aarch64`、`x64`）对齐。刻意避开 `apple-silicon`/`intel` 这类品牌词：工具链无法把它们映射到架构，每个消费方都得自备一张映射表。本地 `pnpm build` 保持 Tauri 默认产物名（`<productName>_<version>_<arch>.<ext>`，如 `DeepTutorDesktop_0.0.1_aarch64.dmg`）；仅 CI 产物使用上述平台明确命名。
 
 ## 3. 构建原则
 
