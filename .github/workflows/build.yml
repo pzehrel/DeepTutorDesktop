@@ -104,17 +104,19 @@ jobs:
           # `bundles` holds the per-platform bundle targets passed to the CLI.
           # Windows ships the NSIS setup.exe only: the MSI was redundant and
           # spent ~8 minutes per run compressing the ~1GB embedded runtime.
-          # Apple Silicon keeps app+dmg. Intel ships the .app as a zip instead:
-          # its dmg attempts died in `hdiutil detach` ("timeout for
-          # DiskArbitration expired") after ~10 minutes of image creation for
-          # the 890MB / 68k-file app, and `ditto -c -k` produces the same
-          # payload in a minute or two without touching hdiutil.
+          # Apple Silicon keeps app+dmg. Intel requests the .app only and the
+          # dmg is produced later from that .app with an attach-free
+          # `hdiutil create -srcfolder`: the tauri dmg attempts died in
+          # `hdiutil detach` ("timeout for DiskArbitration expired") after
+          # ~20 minutes, while the attach-free create measured 10 minutes
+          # end-to-end on the fix/macos-x64-dmg branch (2026-09-11).
           # `bundles` 为传给 CLI 的各平台打包目标。Windows 只发 NSIS 的
           # setup.exe: MSI 与之重复, 且每次为压缩约 1GB 的内嵌 runtime 多花
-          # 约 8 分钟。Apple Silicon 保留 app+dmg。Intel 改为把 .app 压成
-          # zip: 它的 dmg 尝试为这个 890MB/6.8 万文件的应用创建镜像约 10 分钟
-          # 后死在 `hdiutil detach` ("timeout for DiskArbitration expired"),
-          # 而 `ditto -c -k` 只需一两分钟且完全不碰 hdiutil。
+          # 约 8 分钟。Apple Silicon 保留 app+dmg。Intel 只请求 .app,
+          # 之后用不挂载卷的 `hdiutil create -srcfolder` 从该 .app 产出
+          # dmg: Tauri 的 dmg 尝试在约 20 分钟后死在 `hdiutil detach`
+          # ("timeout for DiskArbitration expired"), 而不挂载的 create 在
+          # fix/macos-x64-dmg 分支上实测全程仅 10 分钟 (2026-09-11)。
           #
           # `platform` appears only in artifact, package and job names — the
           # runner comes from `os` and the architecture from whatever host that
@@ -387,11 +389,13 @@ jobs:
 
       # Stage installers under explicit platform/arch names — Intel and
       # Apple Silicon macOS packages must never share a filename. Intel has no
-      # dmg, so its .app is zipped with ditto instead (same payload as a dmg,
-      # without hdiutil).
+      # tauri-produced dmg, so its dmg is created from the .app with an
+      # attach-free `hdiutil create -srcfolder` (see the matrix note for why
+      # the tauri dmg path is avoided on Intel).
       # 以明确的平台/架构命名归档安装包 —— Intel 与 Apple Silicon 的
-      # macOS 包绝不共用文件名。Intel 不产出 dmg, 因此用 ditto 把 .app 打成
-      # zip (载荷与 dmg 相同, 但不经过 hdiutil)。
+      # macOS 包绝不共用文件名。Intel 不经 Tauri 产出 dmg, 而是用不挂载卷的
+      # `hdiutil create -srcfolder` 从 .app 生成 (Intel 为何绕开 Tauri 的
+      # dmg 路径见 matrix 处的注释)。
       - name: Stage packages
         if: runner.os != 'Windows'
         shell: bash
@@ -404,14 +408,20 @@ jobs:
             cp "$f" "packages/DeepTutorDesktop_${VERSION}_${{ matrix.platform }}.dmg"
             dmg_count=$((dmg_count + 1))
           done
-          # Only platforms without a dmg fall back to the zipped .app, so Apple
-          # Silicon keeps shipping the dmg alone.
-          # 只有不产出 dmg 的平台才退回到 zip 的 .app, 因此 Apple Silicon
-          # 仍然只发布 dmg。
-          if [ "$dmg_count" -eq 0 ] && command -v ditto >/dev/null 2>&1; then
+          # Platforms without a tauri dmg (Intel) build theirs directly from
+          # the .app: `-srcfolder` + UDZO compresses without ever attaching
+          # the image, so the detach hang that killed the tauri attempts is
+          # unreachable. Apple Silicon keeps shipping its tauri dmg alone.
+          # 没有 Tauri dmg 的平台 (Intel) 直接从 .app 生成自己的 dmg:
+          # `-srcfolder` 加 UDZO 压缩全程不挂载镜像, 因此令 Tauri 尝试
+          # 卡死的 detach 路径根本不会执行。Apple Silicon 仍然只发布
+          # Tauri 产出的 dmg。
+          if [ "$dmg_count" -eq 0 ] && command -v hdiutil >/dev/null 2>&1 \
+            && [ -d src-tauri/target/release/bundle/macos ]; then
             for f in src-tauri/target/release/bundle/macos/*.app; do
-              ditto -c -k --sequesterRsrc --keepParent "$f" \
-                "packages/DeepTutorDesktop_${VERSION}_${{ matrix.platform }}.app.zip"
+              hdiutil create -volname "DeepTutorDesktop" -format UDZO -ov \
+                -srcfolder "$f" \
+                "packages/DeepTutorDesktop_${VERSION}_${{ matrix.platform }}.dmg"
             done
           fi
           for f in src-tauri/target/release/bundle/deb/*.deb; do
