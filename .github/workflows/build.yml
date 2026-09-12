@@ -11,6 +11,11 @@ name: build
 #   - 由 watch-deeptutor 通过 workflow_call 调用: 它用 GITHUB_TOKEN 推 tag,
 #     而 GitHub 会抑制该 token 产生的事件, 因此自动 tag 过去只有 tag 没有
 #     Release。
+# Pushes/PRs to main only run the lightweight checks (lint, typecheck, tests);
+# the desktop bundle matrix is reserved for release events (`v*` tag pushes and
+# workflow_call), which are the only paths that publish artifacts.
+# main 上的推送/PR 只跑轻量检查 (lint、类型检查、测试); 桌面端打包矩阵仅在
+# 发布事件 (`v*` tag 推送与 workflow_call) 时运行 —— 只有这些路径会发布产物。
 on:
   push:
     branches: [main]
@@ -26,6 +31,42 @@ on:
         type: string
 
 jobs:
+  # Lightweight quality gate for ordinary main pushes/PRs: lint, typecheck and
+  # tests for both the JS and Python sides (`pnpm check`). No desktop bundle is
+  # produced here — packaging runs only on release events.
+  # 普通 main 推送/PR 的轻量质量门: JS 与 Python 两侧的 lint、类型检查与测试
+  # (`pnpm check`)。此处不产出任何桌面端安装包 —— 打包仅在发布事件时运行。
+  check:
+    name: check
+    if: >-
+      !(startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_call')
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # `pnpm check` shells out to `uv run --project bridge` for ruff, pyright
+      # and pytest, so uv must be on PATH; its cache also reuses the resolved
+      # Python interpreter and wheel downloads.
+      # `pnpm check` 通过 `uv run --project bridge` 调用 ruff、pyright 与
+      # pytest, 因此 PATH 上必须有 uv; 其缓存同时复用已解析的 Python
+      # 解释器与 wheel 下载。
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint, typecheck and test
+        run: pnpm check
+
   # Pushing a `v<version>` tag is the release action: this job writes the tag's
   # version into every manifest, commits it to main, and the build jobs then
   # build that commit — so nobody edits version numbers by hand.
@@ -83,12 +124,17 @@ jobs:
   build:
     name: ${{ matrix.platform }}
     needs: version
-    # Run for every non-tag event too, where the `version` job is skipped — but
-    # never when the version guard rejected the tag (nothing should be built or
-    # released from a tag that would move the version backwards).
-    # 非 tag 事件下 `version` job 会被跳过, 此时仍需构建 —— 但版本保护拒绝了
-    # tag 时绝不构建 (会让版本号倒退的 tag 不应产出任何产物或发布)。
-    if: always() && !cancelled() && (needs.version.result == 'success' || needs.version.result == 'skipped')
+    # Only release events (tag push or workflow_call) bundle the desktop app;
+    # ordinary pushes and PRs are covered by the `check` job instead. The
+    # version guard rejecting the tag still means nothing is built or released
+    # (a tag that would move the version backwards must not ship).
+    # 仅发布事件 (tag 推送或 workflow_call) 打包桌面应用; 普通推送与 PR 由
+    # `check` job 覆盖。版本保护拒绝 tag 时依旧绝不构建或发布 (会让版本号
+    # 倒退的 tag 不应产出任何产物)。
+    if: >-
+      always() && !cancelled()
+      && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_call')
+      && needs.version.result == 'success'
     strategy:
       fail-fast: false
       matrix:
