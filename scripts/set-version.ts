@@ -56,7 +56,7 @@ const edits: VersionEdit[] = [
   { file: 'package.json', match: /("version"\s*:\s*)"[^"]*"/, label: 'package.json' },
   { file: 'frontend/package.json', match: /("version"\s*:\s*)"[^"]*"/, label: 'frontend/package.json' },
   { file: 'src-tauri/tauri.conf.json', match: /("version"\s*:\s*)"[^"]*"/, label: 'src-tauri/tauri.conf.json' },
-  { file: 'src-tauri/Cargo.toml', match: /(^\[package\][\s\S]*?^version\s*=\s*)"[^"]*"/m, label: 'src-tauri/Cargo.toml' },
+  { file: 'src-tauri/Cargo.toml', match: /(^\[package\][\s\S]+?^version\s*=\s*)"[^"]*"/m, label: 'src-tauri/Cargo.toml' },
   {
     file: 'src-tauri/Cargo.lock',
     match: /(\[\[package\]\]\nname = "deeptutor-desktop"\nversion = )"[^"]*"/,
@@ -73,7 +73,7 @@ const edits: VersionEdit[] = [
  */
 function normalizeVersion(raw: string): string {
   const version = raw.startsWith('v') ? raw.slice(1) : raw
-  if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
+  if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Z.-]+)?$/i.test(version)) {
     throw new Error(`invalid version: ${raw} (expected e.g. 0.0.2 or v0.0.2)`)
   }
   return version
