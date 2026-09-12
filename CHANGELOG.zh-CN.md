@@ -7,10 +7,18 @@
 
 ## [Unreleased]
 
+- 暂无值得关注的变更。
+
+## [0.0.2] - 2026-09-12
+
 ### 修复
 - **packaging:** 为 macOS 包启用 ad-hoc 签名 (`c2bbc3c`)
 - **shell:** 将字节码缓存移出已签名的应用包 (`e0ff98d`)
 - **shell:** 从 launcher 就绪标记读取前端端口 (`811e96d`)
+
+- **check:** Python 检查脚本所调用的工具位于 bridge 项目的 dev 可选依赖中, 而 uv run 默认不安装 extra, 干净的 CI 环境因此报 "Failed to spawn: ruff"。显式传 --extra dev 使脚本在任意机器上自包含 (`bb449cd`)
+- **lint:** 新增 check 任务暴露的存量 lint 错误修复: build.yml 矩阵项的引号标量改为 plain 风格, set-version.ts 正则的矛盾惰性量词与冗余字符区间修正; 行为不变 (+? 量词与 i 标志字符类覆盖相同输入) (`6e63a81`)
+
 ## [0.0.1] - 2026-09-11
 
 ### 新增
