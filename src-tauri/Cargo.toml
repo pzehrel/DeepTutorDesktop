@@ -1,6 +1,6 @@
 [package]
 name = "deeptutor-desktop"
-version = "0.0.2"
+version = "0.0.3"
 description = "Tauri desktop shell for DeepTutor"
 authors = [ "DeepTutor Desktop contributors" ]
 edition = "2021"
